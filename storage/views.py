@@ -19,8 +19,8 @@ from conf import MONGODB_URI
 logger = app.logger
 
 # TODO login and pass not secure
-client = pm.MongoClient(MONGODB_URI)
 #db = client.get_default_database()
+client = pm.MongoClient(app.config['MONGODB_URI'])
 db = client["robotom"]
 
 

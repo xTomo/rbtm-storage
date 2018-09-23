@@ -17,8 +17,8 @@ import pymongo as pm
 #MONGODB_URI = 'mongodb://database:27017'
 
 # TODO login and pass not secure
-client = pm.MongoClient(MONGODB_URI)
 #db = client.get_default_database()
+client = pm.MongoClient(app.config['MONGODB_URI'])
 db = client["robotom"]
 
 logger = app.logger
