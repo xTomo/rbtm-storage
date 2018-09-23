@@ -15,7 +15,8 @@ RUN pip3 install -r requirements_docker.txt
 
 COPY . /var/www/storage/
 
-RUN echo "MONGODB_URI = 'mongodb://database:27017'" > conf.py
+#RUN echo "MONGODB_URI = 'mongodb://database:27017'" > conf.py
+RUN echo "export YOURAPPLICATION_SETTINGS=conf.py"
 
 # setup nginx
 RUN mkdir -p logs && echo "daemon off;" >> /etc/nginx/nginx.conf \
