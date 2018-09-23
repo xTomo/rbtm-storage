@@ -1,7 +1,6 @@
 import json
 import os
 import numpy as np
-import h5py
 
 from flask import jsonify, make_response, request, abort, Response, send_file
 from bson.json_util import dumps, loads
@@ -14,12 +13,9 @@ from storage import filesystem as fs
 from storage import visualization_3d
 from storage import app
 
-from conf import MONGODB_URI
-
 logger = app.logger
 
 # TODO login and pass not secure
-#db = client.get_default_database()
 client = pm.MongoClient(app.config['MONGODB_URI'])
 db = client["robotom"]
 

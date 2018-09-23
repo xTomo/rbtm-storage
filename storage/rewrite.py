@@ -4,20 +4,11 @@ import h5py
 
 from bson.json_util import dumps, loads
 from bson.objectid import ObjectId
-
-#from flask import Flask
-#app = Flask(__name__)
-
 from storage import app
-
-from conf import MONGODB_URI
-
 import pymongo as pm
 
-#MONGODB_URI = 'mongodb://database:27017'
 
 # TODO login and pass not secure
-#db = client.get_default_database()
 client = pm.MongoClient(app.config['MONGODB_URI'])
 db = client["robotom"]
 
