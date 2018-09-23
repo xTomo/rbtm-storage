@@ -25,4 +25,3 @@ def logger_setup():
 
 logger_setup()
 
-import storage.views
