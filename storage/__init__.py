@@ -1,6 +1,5 @@
 import os
 import logging
-import storage.views
 
 from flask import Flask
 app = Flask(__name__)
@@ -40,3 +39,5 @@ def logger_setup():
 
 
 logger_setup()
+
+import storage.views
