@@ -2,7 +2,9 @@ import os, json, logging
 import constants
 import numpy as np
 
+from flask import current_app as app
 from flask import jsonify, request, abort, Response, send_file, Blueprint
+
 from bson.json_util import dumps, loads
 from bson.objectid import ObjectId
 
@@ -11,7 +13,6 @@ import pymongo as pm
 from storage import pyframes
 from storage import filesystem as fs
 from storage import visualization_3d
-from storage import app
 
 logger = logging.getLogger(constants.LOGGER_NAME)
 

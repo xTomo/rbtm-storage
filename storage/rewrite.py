@@ -4,8 +4,9 @@ import constants
 
 from bson.json_util import dumps, loads
 from bson.objectid import ObjectId
-from storage import app
 import pymongo as pm
+
+from flask import current_app as app
 
 
 # TODO login and pass not secure

@@ -1,4 +1,4 @@
-from flask import current_app
+from flask import current_app as app
 
 
 def logger_setup(logger_name):
@@ -7,7 +7,7 @@ def logger_setup(logger_name):
     from logging import StreamHandler
     from logging.handlers import RotatingFileHandler
 
-    is_debug = current_app.config['DEBUG']
+    is_debug = app.config['DEBUG']
 
     log_level = logging.DEBUG if is_debug else logging.INFO
     formatter = logging.Formatter("%(asctime)s - %(name)s - [LINE:%(lineno)d]# - %(levelname)s - %(message)s")

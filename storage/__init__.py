@@ -8,11 +8,10 @@ app.config.from_envvar('YOURAPPLICATION_SETTINGS')
 with app.app_context():
     logger.logger_setup(constants.LOGGER_NAME)
 
+    from storage import views
 
-from storage import views
-
-app.register_blueprint(views.bp_experiments)
-app.register_blueprint(views.bp_storage)
+    app.register_blueprint(views.bp_experiments)
+    app.register_blueprint(views.bp_storage)
 
 
 # for returning error as json file
