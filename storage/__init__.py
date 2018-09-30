@@ -1,16 +1,19 @@
 import logger
 
-from flask import Flask, make_response, jsonify
+from flask import Flask
 app = Flask(__name__)
 app.config.from_envvar('YOURAPPLICATION_SETTINGS')
 
 
 with app.app_context():
+
     logger.logger_setup()
 
-    import views, routes.errors as re
+    import \
+        routes.storage, \
+        routes.experiments, \
+        routes.errors
 
-    app.register_blueprint(views.bp_experiments)
-    app.register_blueprint(views.bp_storage)
-    re.setup_error_handlers()
-
+    app.register_blueprint(routes.storage.bp_storage)
+    app.register_blueprint(routes.experiments.bp_experiments)
+    routes.errors.setup_error_handlers()
