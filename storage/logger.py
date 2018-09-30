@@ -21,12 +21,12 @@ def logger_setup(logger_name):
     if not os.path.exists(os.path.dirname(logs_path)):
         os.makedirs(os.path.dirname(logs_path))
 
-    log = logging.getLogger(logger_name)
-    log.setLevel(log_level)
+    logger = logging.getLogger('werkzeug')
+    logger.setLevel(log_level)
 
     file_handler = configured_log_handler(RotatingFileHandler(logs_path, maxBytes=512000, backupCount=1))
-    log.addHandler(file_handler)
+    logger.addHandler(file_handler)
 
     if is_debug:
         stream_handler = configured_log_handler(StreamHandler())
-        log.addHandler(stream_handler)
+        logger.addHandler(stream_handler)
