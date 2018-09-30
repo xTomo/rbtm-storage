@@ -1,5 +1,4 @@
-import os, logging
-import constants
+import os
 from threading import Thread
 
 import h5py
@@ -11,8 +10,10 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+from flask import current_app as app
 
-logger = logging.getLogger(constants.LOGGER_NAME)
+
+logger = app.logger
 
 
 # def extract_frame(frame_number, frame_type, experiment_id):

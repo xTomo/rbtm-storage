@@ -1,4 +1,4 @@
-import constants, logger
+import logger
 
 from flask import Flask, make_response, jsonify
 app = Flask(__name__)
@@ -6,7 +6,7 @@ app.config.from_envvar('YOURAPPLICATION_SETTINGS')
 
 
 with app.app_context():
-    logger.logger_setup(constants.LOGGER_NAME)
+    logger.logger_setup()
 
     from storage import views
 

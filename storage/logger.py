@@ -1,7 +1,7 @@
 from flask import current_app as app
 
 
-def logger_setup(logger_name):
+def logger_setup():
 
     import os, logging
     from logging import StreamHandler
@@ -23,10 +23,13 @@ def logger_setup(logger_name):
 
     logger = logging.getLogger('werkzeug')
     logger.setLevel(log_level)
+    app.logger.setLevel(log_level)
 
     file_handler = configured_log_handler(RotatingFileHandler(logs_path, maxBytes=512000, backupCount=1))
     logger.addHandler(file_handler)
+    app.logger.addHandler(file_handler)
 
     if is_debug:
         stream_handler = configured_log_handler(StreamHandler())
         logger.addHandler(stream_handler)
+        app.logger.addHandler(stream_handler)

@@ -1,8 +1,9 @@
-import os, shutil, h5py, logging
-import constants
+import os, shutil, h5py
+
+from flask import current_app as app
 
 
-logger = logging.getLogger(constants.LOGGER_NAME)
+logger = app.logger
 
 
 def create_experiment(experiment_id, exp_info):

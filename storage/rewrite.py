@@ -1,6 +1,5 @@
 __author__ = 'arlen'
-import os, h5py, logging
-import constants
+import os, h5py
 
 from bson.json_util import dumps, loads
 from bson.objectid import ObjectId
@@ -13,7 +12,7 @@ from flask import current_app as app
 client = pm.MongoClient(app.config['MONGODB_URI'])
 db = client["robotom"]
 
-logger = logging.getLogger(constants.LOGGER_NAME)
+logger = app.logger
 
 
 def rewrite_file_h5(file):

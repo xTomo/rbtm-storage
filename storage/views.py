@@ -1,5 +1,4 @@
-import os, json, logging
-import constants
+import os, json
 import numpy as np
 
 from flask import current_app as app
@@ -14,8 +13,8 @@ from storage import pyframes
 from storage import filesystem as fs
 from storage import visualization_3d
 
-logger = logging.getLogger(constants.LOGGER_NAME)
 
+logger = app.logger
 
 # TODO login and pass not secure
 client = pm.MongoClient(app.config['MONGODB_URI'])

@@ -1,12 +1,13 @@
-import os, h5py, logging
-import constants
+import os, h5py
 
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 
+from flask import current_app as app
 
-logger = logging.getLogger(constants.LOGGER_NAME)
+
+logger = app.logger
 
 
 def get_and_save_3d_points(hdf5_filename, output_filename, rarefaction, level1, level2):
