@@ -1,5 +1,6 @@
 import os
 import logging
+import storage.views
 
 from flask import Flask
 app = Flask(__name__)
