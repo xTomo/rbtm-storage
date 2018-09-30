@@ -20,24 +20,6 @@ client = pm.MongoClient(app.config['MONGODB_URI'])
 db = client["robotom"]
 
 
-# for returning error as json file
-@app.errorhandler(404)
-def not_found(exception):
-    logger.exception(exception)
-    return make_response(jsonify({'error': 'Not found'}), 404)
-
-
-@app.errorhandler(400)
-def incorrect_format(exception):
-    logger.exception(exception)
-    return make_response(jsonify({'error': 'Incorrect format'}), 400)
-
-
-@app.errorhandler(500)
-def incorrect_format(exception):
-    logger.exception(exception)
-    return make_response(jsonify({'error': 'Internal Server'}), 500)
-
 
 # return experiments by request json file. return json
 @app.route('/storage/experiments/get', methods=['POST'])
