@@ -41,7 +41,12 @@ def logger_setup():
 
 logger_setup()
 
-import storage.views
+
+from storage import views
+
+app.register_blueprint(views.bp_experiments)
+app.register_blueprint(views.bp_storage)
+
 
 # for returning error as json file
 @app.errorhandler(404)
