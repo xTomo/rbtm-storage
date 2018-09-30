@@ -1,4 +1,5 @@
-import os
+import os, logging
+import constants
 from threading import Thread
 
 import h5py
@@ -10,9 +11,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from storage import app
 
-logger = app.logger
+logger = logging.getLogger(constants.LOGGER_NAME)
 
 
 # def extract_frame(frame_number, frame_type, experiment_id):

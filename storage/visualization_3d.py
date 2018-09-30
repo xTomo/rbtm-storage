@@ -1,14 +1,12 @@
-import os
-
-import h5py
+import os, h5py, logging
+import constants
 
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 
-from storage import app
 
-logger = app.logger
+logger = logging.getLogger(constants.LOGGER_NAME)
 
 
 def get_and_save_3d_points(hdf5_filename, output_filename, rarefaction, level1, level2):

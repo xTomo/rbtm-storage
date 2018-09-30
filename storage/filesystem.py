@@ -1,9 +1,8 @@
-import os
-import shutil
-import h5py
+import os, shutil, h5py, logging
+import constants
 
-from storage import app
-logger = app.logger
+
+logger = logging.getLogger(constants.LOGGER_NAME)
 
 
 def create_experiment(experiment_id, exp_info):

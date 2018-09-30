@@ -1,6 +1,6 @@
 __author__ = 'arlen'
-import os
-import h5py
+import os, h5py, logging
+import constants
 
 from bson.json_util import dumps, loads
 from bson.objectid import ObjectId
@@ -12,7 +12,7 @@ import pymongo as pm
 client = pm.MongoClient(app.config['MONGODB_URI'])
 db = client["robotom"]
 
-logger = app.logger
+logger = logging.getLogger(constants.LOGGER_NAME)
 
 
 def rewrite_file_h5(file):
