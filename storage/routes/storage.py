@@ -1,7 +1,7 @@
 import os, json
 
 from flask import current_app as app
-from flask import Blueprint, request, abort, jsonify, Response, send_file
+from flask import Blueprint, request, abort, jsonify, Response, send_file, g
 
 import numpy as np
 import pymongo as pm
@@ -12,14 +12,9 @@ from bson.objectid import ObjectId
 import pyframes
 
 
-bp_storage = Blueprint('storage', __name__, url_prefix='/storage')
-
 logger = app.logger
-
-
-# TODO login and pass not secure
-client = pm.MongoClient(app.config['MONGODB_URI'])
-db = client["robotom"]
+db = g.db
+bp_storage = Blueprint('storage', __name__, url_prefix='/storage')
 
 
 @bp_storage.route('/frames/post', methods=['POST'])

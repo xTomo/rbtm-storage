@@ -1,7 +1,7 @@
 import os, json
 
 from flask import current_app as app
-from flask import jsonify, request, abort, Response, send_file, Blueprint
+from flask import jsonify, request, abort, Response, send_file, Blueprint, g
 
 from bson.json_util import dumps
 
@@ -12,11 +12,7 @@ from storage import visualization_3d
 
 
 logger = app.logger
-
-# TODO login and pass not secure
-client = pm.MongoClient(app.config['MONGODB_URI'])
-db = client["robotom"]
-
+db = g.db
 bp_experiments = Blueprint('experiments', __name__, url_prefix='/storage/experiments')
 
 

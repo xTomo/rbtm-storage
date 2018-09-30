@@ -9,6 +9,10 @@ with app.app_context():
 
     logger.logger_setup()
 
+    import db
+
+    db.get_db()
+
     import \
         routes.storage, \
         routes.experiments, \
