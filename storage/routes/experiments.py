@@ -1,46 +1,23 @@
-import json
-import os
-import numpy as np
+import os, json
 
-from flask import jsonify, make_response, request, abort, Response, send_file
-from bson.json_util import dumps, loads
-from bson.objectid import ObjectId
+from flask import current_app as app
+from flask import jsonify, request, abort, Response, send_file, Blueprint, g
+
+from bson.json_util import dumps
 
 import pymongo as pm
 
-from storage import pyframes
 from storage import filesystem as fs
 from storage import visualization_3d
-from storage import app
+
 
 logger = app.logger
-
-# TODO login and pass not secure
-client = pm.MongoClient(app.config['MONGODB_URI'])
-db = client["robotom"]
-
-
-# for returning error as json file
-@app.errorhandler(404)
-def not_found(exception):
-    logger.exception(exception)
-    return make_response(jsonify({'error': 'Not found'}), 404)
-
-
-@app.errorhandler(400)
-def incorrect_format(exception):
-    logger.exception(exception)
-    return make_response(jsonify({'error': 'Incorrect format'}), 400)
-
-
-@app.errorhandler(500)
-def incorrect_format(exception):
-    logger.exception(exception)
-    return make_response(jsonify({'error': 'Internal Server'}), 500)
+db = g.db
+bp_experiments = Blueprint('experiments', __name__, url_prefix='/storage/experiments')
 
 
 # return experiments by request json file. return json
-@app.route('/storage/experiments/get', methods=['POST'])
+@bp_experiments.route('/get', methods=['POST'])
 def get_experiments():
     if not request.data:
         logger.error('Incorrect format')
@@ -62,7 +39,7 @@ def get_experiments():
 
 
 # create new experiment, need json file as request return result:success json if success
-@app.route('/storage/experiments/create', methods=['POST'])
+@bp_experiments.route('/create', methods=['POST'])
 def create_experiment():
     if not request.data:
         logger.error('Incorrect format')
@@ -87,7 +64,7 @@ def create_experiment():
         return jsonify({'result': 'experiment {} already exists in file system'.format(experiment_id)})
 
 
-@app.route('/storage/experiments/finish', methods=['POST'])
+@bp_experiments.route('/finish', methods=['POST'])
 def finish_experiment():
     if not request.data:
         logger.error('Incorrect format')
@@ -109,79 +86,7 @@ def finish_experiment():
     return jsonify({'result': 'success'})
 
 
-@app.route('/storage/frames/post', methods=['POST'])
-def new_frame():
-    if not (request.files and request.form):
-        logger.error('Incorrect format')
-        abort(400)
-
-    logger.info('Request body: ' + str(request.form))
-
-    json_frame = json.loads(request.form['data'])
-    experiment_id = json_frame['exp_id']
-
-    frame = request.files['file']
-
-    logger.info('Going to np.load...')
-    image_array = np.load(frame.stream)['frame_data']
-    logger.info('Image array has been loaded!')
-
-    frame_id = db['frames'].insert(json_frame)
-    frame_number = str(json_frame['frame']['number'])
-    frame_type = str(json_frame['frame']['mode'])
-    frame_info = dumps(db['frames'].find({"_id": ObjectId(frame_id)}))
-
-    pyframes.add_frame(image_array, frame_info, frame_number, frame_type, frame_id, experiment_id)
-
-    logger.info('experiment id: {} frame id: {}'.format(str(experiment_id), str(frame_id)))
-
-    return jsonify({'result': 'success'})
-
-
-@app.route('/storage/frames_info/get', methods=['POST'])
-def get_frame_info():
-    if not request.data:
-        logger.error('Incorrect format')
-        abort(400)
-
-    logger.info(b'Request body: ' + request.data)
-
-    find_query = json.loads(request.data.decode())
-
-    frames = db['frames']
-
-    cursor = frames.find(find_query).sort('frame.number', pm.ASCENDING)
-
-    resp = Response(response=dumps(cursor),
-                    status=200,
-                    mimetype="application/json")
-
-    return resp
-
-
-@app.route('/storage/png/get', methods=['POST'])
-def get_png():
-    if not request.data:
-        logger.error('Incorrect format')
-        abort(400)
-
-    logger.info(b'Request body: ' + request.data)
-
-    find_query = json.loads(request.data.decode())
-    frame_id = find_query['frame_id']
-    experiment_id = find_query['exp_id']
-
-    png_file_path = os.path.abspath(os.path.join('data', 'experiments', str(experiment_id), 'before_processing', 'png',
-                                 str(frame_id) + '.png'))
-
-    #if not os.path.exists(os.path.join('storage', png_file_path)):
-    #if not os.path.exists(png_file_path):
-    #    abort(404)
-
-    return send_file(png_file_path, mimetype='image/png')
-
-
-@app.route('/storage/experiments/<experiment_id>', methods=['DELETE'])
+@bp_experiments.route('/<experiment_id>', methods=['DELETE'])
 def delete_experiment(experiment_id):
     json_result = jsonify({'deleted': 'success'})
     logger.info('Deleting experiment: ' + experiment_id)
@@ -216,7 +121,7 @@ def delete_experiment(experiment_id):
     return json_result
 
 
-@app.route('/storage/experiments/<experiment_id>/3d/<int:rarefaction>/<int:level1>/<int:level2>', methods=['GET'])
+@bp_experiments.route('/<experiment_id>/3d/<int:rarefaction>/<int:level1>/<int:level2>', methods=['GET'])
 def get_3d_visualization(experiment_id, rarefaction, level1, level2):
     rarefaction = max(rarefaction, 1)
     level1 = min(max(level1, 0), 25)
@@ -229,5 +134,5 @@ def get_3d_visualization(experiment_id, rarefaction, level1, level2):
     visualization_3d.get_and_save_3d_points(
         hfd5_filename, output_filename, rarefaction, level1, level2)
 
-    return send_file(output_filename, mimetype='application/x-hdf5', 
+    return send_file(output_filename, mimetype='application/x-hdf5',
         as_attachment=True, attachment_filename=str(experiment_id) + '.hdf5')

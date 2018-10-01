@@ -1,8 +1,8 @@
-import os
-import shutil
-import h5py
+import os, shutil, h5py
 
-from storage import app
+from flask import current_app as app
+
+
 logger = app.logger
 
 

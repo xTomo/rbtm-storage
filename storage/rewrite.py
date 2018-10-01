@@ -1,18 +1,14 @@
 __author__ = 'arlen'
-import os
-import h5py
+import os, h5py
 
 from bson.json_util import dumps, loads
 from bson.objectid import ObjectId
-from storage import app
-import pymongo as pm
 
+from flask import current_app as app, g
 
-# TODO login and pass not secure
-client = pm.MongoClient(app.config['MONGODB_URI'])
-db = client["robotom"]
 
 logger = app.logger
+db = g.db
 
 
 def rewrite_file_h5(file):

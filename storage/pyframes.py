@@ -10,7 +10,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from storage import app
+from flask import current_app as app
+
 
 logger = app.logger
 
