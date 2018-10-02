@@ -14,6 +14,6 @@ pyparsing==2.0.3
 python-dateutil==2.4.2
 pytz==2015.4
 scipy==1.1.0
-six==1.9.0
+six==1.10.0
 uWSGI==2.0.17.1
 lockfile==0.12.2

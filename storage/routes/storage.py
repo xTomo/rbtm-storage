@@ -9,7 +9,7 @@ import pymongo as pm
 from bson.json_util import dumps
 from bson.objectid import ObjectId
 
-import pyframes
+from . import pyframes
 
 
 logger = app.logger

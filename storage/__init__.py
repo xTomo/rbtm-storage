@@ -1,4 +1,4 @@
-import logger
+from . import logger
 
 from flask import Flask
 app = Flask(__name__)
@@ -9,15 +9,12 @@ with app.app_context():
 
     logger.logger_setup()
 
-    import db
+    from . import db
 
     db.get_db()
 
-    import \
-        routes.storage, \
-        routes.experiments, \
-        routes.errors
+    from .routes import storage, experiments, errors
 
-    app.register_blueprint(routes.storage.bp_storage)
-    app.register_blueprint(routes.experiments.bp_experiments)
-    routes.errors.setup_error_handlers()
+    app.register_blueprint(storage.bp_storage)
+    app.register_blueprint(experiments.bp_experiments)
+    errors.setup_error_handlers()
