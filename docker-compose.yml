@@ -3,14 +3,14 @@ database:
   ports:
     - "27017:27017"
   volumes:
-     - /home/robotom/rbtm/storage/data/db:/data/db
+     - /home/robotom/rbtm_data/rbtm_storage/data/db:/data/db
   restart: unless-stopped
 
 server:
   build: .
   volumes:
-    - /home/robotom/rbtm/storage/data/experiments:/var/www/storage/data/experiments
-    - /home/robotom/rbtm/storage/data/hand:/var/www/storage/data/hand
+    - /home/robotom/rbtm_data/rbtm_storage/data/experiments:/var/www/storage/data/experiments
+    - /home/robotom/rbtm_data/rbtm_storage/data/hand:/var/www/storage/data/hand
     # - ./logs:/var/www/storage/logs
   ports:
     - "5006:5006"
