@@ -1,19 +1,21 @@
-database:
-  image: mongo:3.4
-  ports:
-    - "27017:27017"
-  volumes:
-     - /home/robotom/rbtm_data/rbtm_storage/data/db:/data/db
-  restart: unless-stopped
+version: '2.3'
+services:
+  database:
+    image: mongo:3.4
+    # ports:
+    #   - "27017:27017"
+    volumes:
+      - /home/robotom/rbtm_data/rbtm_storage/data/db:/data/db
+    restart: unless-stopped
 
-server:
-  build: .
-  volumes:
-    - /home/robotom/rbtm_data/rbtm_storage/data/experiments:/var/www/storage/data/experiments
-    - /home/robotom/rbtm_data/rbtm_storage/data/hand:/var/www/storage/data/hand
-    # - ./logs:/var/www/storage/logs
-  ports:
-    - "5006:5006"
-  links:
-    - database
-  restart: unless-stopped
+  server:
+    build: .
+    volumes:
+      - /home/robotom/rbtm_data/rbtm_storage/data/experiments:/var/www/storage/data/experiments
+      - /home/robotom/rbtm_data/rbtm_storage/data/hand:/var/www/storage/data/hand
+      # - ./logs:/var/www/storage/logs
+    ports:
+      - "5006:5006"
+    # links:
+    #   - database
+    restart: unless-stopped
