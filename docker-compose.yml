@@ -2,6 +2,7 @@ version: '2.3'
 services:
   database:
     image: mongo:3.4
+    container_name: rbtmstorage_database_1
     # ports:
     #   - "27017:27017"
     volumes:
@@ -14,6 +15,7 @@ services:
       - /home/robotom/rbtm_data/rbtm_storage/data/experiments:/var/www/storage/data/experiments
       - /home/robotom/rbtm_data/rbtm_storage/data/hand:/var/www/storage/data/hand
       # - ./logs:/var/www/storage/logs
+    container_name: rbtmstorage_server_1
     ports:
       - "5006:5006"
     # links:
