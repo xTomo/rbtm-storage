@@ -1,13 +1,9 @@
 import pymongo as pm
-
 from flask import current_app as app, g
-
 
 logger = app.logger
 
-
 def get_db():
-
     if 'db' not in g:
         logger.info('init database')
         # TODO login and pass not secure

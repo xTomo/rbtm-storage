@@ -16,14 +16,6 @@ from flask import current_app as app
 logger = app.logger
 
 
-# def extract_frame(frame_number, frame_type, experiment_id):
-#     frames_file_path = os.path.join('data', 'experiments', str(experiment_id), 'before_processing', '{}.h5'.format(experiment_id))
-#     with h5py.File(frames_file_path, 'r') as frames_file:
-#         frame = frames_file[frame_type][str(frame_number)]
-#     logger.info('hdf5 file: extract frame {} of experiment {} successfully'.format(frame_id, experiment_id))  # frame_id not defined
-#     return frame
-
-
 def add_frame(frame, frame_info, frame_number, frame_type, frame_id, experiment_id):
     frames_file_path = os.path.join('data', 'experiments', str(experiment_id), 'before_processing', '{}.h5'.format(experiment_id))
 
@@ -40,7 +32,7 @@ def add_frame(frame, frame_info, frame_number, frame_type, frame_id, experiment_
     Thread(target=make_png, args=(frame, png_file_path)).start()
     logger.info('png: start making png from frame {} of experiment {}'.format(frame_id, experiment_id))
 
-
+# TODO: remove method as unused
 def delete_frame(frame_number, frame_type, frame_id,  experiment_id):
     frames_file_path = os.path.join('data', 'experiments', str(experiment_id), 'before_processing', '{}.h5'.format(experiment_id))
     with h5py.File(frames_file_path, 'r+') as frames_file:
