@@ -48,5 +48,5 @@ def rewrite_file_h5(file):
 
 experiments_path = os.path.join('data', 'experiments')
 for root, dirs, files in os.walk(experiments_path):
-    for 'frames.h5' in files:
-        rewrite_file_h5(os.path.join(root, name))
+    if 'frames.h5' in files:
+        rewrite_file_h5(os.path.join(root, 'frames.h5'))
