@@ -35,7 +35,7 @@ def rewrite_file_h5(file):
                 json_frame = loads(frame_info)
                 frame_number = str(json_frame[0]['frame']['number'])
                 frame_type = str(json_frame[0]['frame']['mode'])
-                frame_dataset = data[frame_type].create_dataset(frame_number, data=old_data[frame_id], compression="gzip", compression_opts=9)
+                frame_dataset = data[frame_type].create_dataset(frame_number, data=old_data[frame_id], compression="gzip", compression_opts=4)
                 frame_dataset.attrs.create("frame_info", frame_info.encode('utf8'))
 
             print("hdf5: wrote compressed datasets")
