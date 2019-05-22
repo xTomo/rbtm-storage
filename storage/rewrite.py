@@ -44,7 +44,7 @@ def rewrite_file_h5(file):
     else:
         logger.debug("file already exists")
 
-
+# TODO: WTF? Who and where call this code?
 experiments_path = os.path.join('data', 'experiments')
 for root, dirs, files in os.walk(experiments_path):
     if 'frames.h5' in files:
