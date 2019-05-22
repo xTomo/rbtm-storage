@@ -1,5 +1,5 @@
-__author__ = 'arlen'
-import os, h5py
+import os
+import h5py
 
 from bson.json_util import dumps, loads
 from bson.objectid import ObjectId
