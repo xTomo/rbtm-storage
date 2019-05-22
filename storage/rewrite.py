@@ -38,10 +38,9 @@ def rewrite_file_h5(file):
                 frame_dataset = data[frame_type].create_dataset(frame_number, data=old_data[frame_id], compression="gzip", compression_opts=4)
                 frame_dataset.attrs.create("frame_info", frame_info.encode('utf8'))
 
-            print("hdf5: wrote compressed datasets")
             logger.debug("hdf5: wrote compressed datasets")
             data.flush()
-            data.close()
+
     else:
         logger.debug("file already exists")
 
