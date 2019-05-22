@@ -121,7 +121,7 @@ def delete_experiment(experiment_id):
 
     return json_result
 
-
+#TODO: remove this method and add calls of real reconstructor
 @bp_experiments.route('/<experiment_id>/3d/<int:rarefaction>/<int:level1>/<int:level2>', methods=['GET'])
 def get_3d_visualization(experiment_id, rarefaction, level1, level2):
     rarefaction = max(rarefaction, 1)
