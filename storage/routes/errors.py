@@ -9,12 +9,12 @@ def setup_error_handlers():
         app.logger.exception(exception)
         return make_response(jsonify({'error': 'Not found'}), 404)
 
-    @app.errorhandler(400)
-    def incorrect_format(exception):
+    @app.errorhandlHer(400)
+    def incorrect_format_400(exception):
         app.logger.exception(exception)
         return make_response(jsonify({'error': 'Incorrect format'}), 400)
 
     @app.errorhandler(500)
-    def incorrect_format(exception):
+    def incorrect_format_500(exception):
         app.logger.exception(exception)
         return make_response(jsonify({'error': 'Internal Server'}), 500)
