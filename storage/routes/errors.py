@@ -9,7 +9,7 @@ def setup_error_handlers():
         app.logger.exception(exception)
         return make_response(jsonify({'error': 'Not found'}), 404)
 
-    @app.errorhandlHer(400)
+    @app.errorhandler(400)
     def incorrect_format_400(exception):
         app.logger.exception(exception)
         return make_response(jsonify({'error': 'Incorrect format'}), 400)
