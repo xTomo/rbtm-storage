@@ -39,7 +39,7 @@ def filtration(cernel_size, plane_dir = ""):
         print("Doing cubic filtration...")
         filtered_datacube = scipy.signal.medfilt(dataCube, cernel_size).astype(np.float32)
     fileIn.close()
-    print "filtered_datacube1.shape: ", filtered_datacube.shape
+    print("filtered_datacube1.shape: ", filtered_datacube.shape)
     dataCube = filtered_datacube
 
     """
@@ -84,7 +84,7 @@ if __name__ == "__main__":
 
 
     if len(sys.argv) < 2:
-        print "usage: filtration <filtration_cernel_size> [direction of plane of filtration ('x', 'y' or 'z')]"
+        print("usage: filtration <filtration_cernel_size> [direction of plane of filtration ('x', 'y' or 'z')]")
     else:
         cernel_size = int(sys.argv[1])
 
