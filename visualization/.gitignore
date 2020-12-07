@@ -1,5 +1,0 @@
-data/prepared_data/*
-!data/prepared_data/hand
-data/prepared_data/hand/*
-!data/prepared_data/hand/cut
-data/prepared_data/hand/cut/*

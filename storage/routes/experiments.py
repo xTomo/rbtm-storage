@@ -1,16 +1,11 @@
-import os
 import json
 
-from flask import current_app as app
-from flask import jsonify, request, abort, Response, send_file, Blueprint, g
-
-from bson.json_util import dumps
-
 import pymongo as pm
+from bson.json_util import dumps
+from flask import current_app as app
+from flask import jsonify, request, abort, Response, Blueprint, g
 
 from storage import filesystem as fs
-from storage import visualization_3d
-
 
 logger = app.logger
 db = g.db
@@ -120,20 +115,3 @@ def delete_experiment(experiment_id):
     # db['reconstructions'].remove(request.get_json())
 
     return json_result
-
-#TODO: remove this method and add calls of real reconstructor
-@bp_experiments.route('/<experiment_id>/3d/<int:rarefaction>/<int:level1>/<int:level2>', methods=['GET'])
-def get_3d_visualization(experiment_id, rarefaction, level1, level2):
-    rarefaction = max(rarefaction, 1)
-    level1 = min(max(level1, 0), 25)
-    level2 = min(max(level2, 0), 25)
-    if level2 < level1:
-        level1, level2 = level2, level1
-
-    hfd5_filename = os.path.abspath("data/hand/result.hdf5")
-    output_filename = os.path.abspath("data/hand/visualization_3d.hdf5")
-    visualization_3d.get_and_save_3d_points(
-        hfd5_filename, output_filename, rarefaction, level1, level2)
-
-    return send_file(output_filename, mimetype='application/x-hdf5',
-        as_attachment=True, attachment_filename=str(experiment_id) + '.hdf5')
