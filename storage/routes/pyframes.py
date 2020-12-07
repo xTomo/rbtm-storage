@@ -2,16 +2,14 @@ import os
 from threading import Thread
 
 import h5py
+import matplotlib
+import scipy.ndimage
 from lockfile import LockFile
 
-import numpy as np
-import scipy.ndimage
-import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 from flask import current_app as app
-
 
 logger = app.logger
 
@@ -45,7 +43,7 @@ def make_png(frame, png_path):
     logger.info('Going to make png...')
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    enhanced_image = scipy.ndimage.filters.median_filter(np.rot90(frame), size=3)
+    enhanced_image = scipy.ndimage.filters.median_filter(frame, size=3)
     im = ax.imshow(enhanced_image, cmap=plt.cm.gray)  # vmin, vmax
     fig.colorbar(im)
     fig.savefig(png_path)
