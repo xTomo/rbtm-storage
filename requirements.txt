@@ -2,7 +2,7 @@ Cython==0.28.5
 Flask==0.12.4
 Jinja2>=2.10.1
 MarkupSafe==0.23
-Werkzeug==0.10.4
+Werkzeug==0.15.3
 backports.pbkdf2==0.1
 h5py==2.8.0
 itsdangerous==0.24
