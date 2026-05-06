@@ -1,3 +1,4 @@
+import json
 import os
 from threading import Thread
 
@@ -17,11 +18,26 @@ logger = app.logger
 def add_frame(frame, frame_info, frame_number, frame_type, frame_id, experiment_id):
     frames_file_path = os.path.join('data', 'experiments', str(experiment_id), 'before_processing', '{}.h5'.format(experiment_id))
 
+    # Extract detector info from frame_info JSON
+    try:
+        frame_info_dict = json.loads(frame_info)
+        # frame_info is a MongoDB document; the original event wraps it in a 'frame' key
+        frame_payload = frame_info_dict.get('frame', frame_info_dict)
+        detector_info = frame_payload.get('image_data', {}).get('detector', {})
+        detector_model = str(detector_info.get('model', ''))
+        pixel_size = float(detector_info.get('pixel_size', 4.25e-3))
+    except (ValueError, TypeError, AttributeError):
+        detector_model = ''
+        pixel_size = 4.25e-3
+
     lock = LockFile(frames_file_path)
     with lock:
         with h5py.File(frames_file_path, 'r+') as frames_file:
             frames_file[frame_type].create_dataset(str(frame_number), data=frame, compression="gzip", compression_opts=4)
-            frames_file[frame_type][str(frame_number)].attrs["frame_info"] = frame_info.encode('utf8')
+            ds = frames_file[frame_type][str(frame_number)]
+            ds.attrs["frame_info"] = frame_info.encode('utf8')
+            ds.attrs["detector_model"] = detector_model
+            ds.attrs["pixel_size"] = pixel_size
 
     logger.info('hdf5 file: add frame {} to experiment {} successfully'.format(frame_id, experiment_id))
 
