@@ -1,10 +1,10 @@
 version: '2.3'
 services:
   database:
-    image: mongo:3.4
+    image: mongo:4.0
     container_name: rbtmstorage_database_1
-    ports:
-      - "27017:27017"
+    #    ports:
+    # - "27017:27017"
     volumes:
       - /home/robotom/rbtm_data/rbtm_storage/data/db:/data/db
     restart: unless-stopped
