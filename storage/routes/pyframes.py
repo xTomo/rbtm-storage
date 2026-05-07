@@ -4,8 +4,8 @@ from threading import Thread
 
 import h5py
 import matplotlib
+import portalocker
 import scipy.ndimage
-from lockfile import LockFile
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -30,8 +30,8 @@ def add_frame(frame, frame_info, frame_number, frame_type, frame_id, experiment_
         detector_model = ''
         pixel_size = 4.25e-3
 
-    lock = LockFile(frames_file_path)
-    with lock:
+    lock_path = frames_file_path + '.lock'
+    with portalocker.Lock(lock_path, timeout=60):
         with h5py.File(frames_file_path, 'r+') as frames_file:
             frames_file[frame_type].create_dataset(str(frame_number), data=frame, compression="gzip", compression_opts=4)
             ds = frames_file[frame_type][str(frame_number)]
