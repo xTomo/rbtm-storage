@@ -57,11 +57,15 @@ def delete_frame(frame_number, frame_type, frame_id,  experiment_id):
 
 def make_png(frame, png_path):
     logger.info('Going to make png...')
-    fig = plt.figure()
+    # Downsample 4x before filtering — reduces image from e.g. 4096x4096 to 1024x1024
+    # This makes median_filter ~16x faster with negligible quality loss for preview
+    small = frame[::4, ::4]
+    enhanced_image = scipy.ndimage.filters.median_filter(small, size=3)
+    fig = plt.figure(figsize=(7, 4), dpi=72)
     ax = fig.add_subplot(111)
-    enhanced_image = scipy.ndimage.filters.median_filter(frame, size=3)
-    im = ax.imshow(enhanced_image, cmap=plt.cm.gray)  # vmin, vmax
+    im = ax.imshow(enhanced_image, cmap=plt.cm.gray)
     fig.colorbar(im)
-    fig.savefig(png_path)
+    fig.tight_layout()
+    fig.savefig(png_path, dpi=72)
     plt.close(fig)
     logger.info('png was made')
