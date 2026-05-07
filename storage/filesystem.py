@@ -31,6 +31,7 @@ def create_experiment(experiment_id, exp_info):
             frames_file.create_group("empty")
             frames_file.create_group("dark")
             frames_file.create_group("data")
+            frames_file.create_group("data_check")
             frames_file.attrs["exp_info"] = exp_info.encode("utf-8")
 
 
