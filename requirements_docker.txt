@@ -17,4 +17,4 @@ pytz==2015.4
 six==1.10.0
 uWSGI==2.0.17.1
 lockfile==0.12.2
-portalocker==2.10.1
+portalocker==2.7.0
