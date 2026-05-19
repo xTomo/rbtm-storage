@@ -55,6 +55,35 @@ data/experiments/<exp_id>/
 
 > **Примечание**: группа `data_check` добавлена для поддержки продвинутого режима эксперимента.
 
+#### Атрибут `exp_info` в HDF5
+
+Атрибут `exp_info` в корне HDF5-файла — это полный JSON-документ эксперимента из MongoDB, сериализованный через `bson.json_util.dumps`. Параметры эксперимента **вложены** в ключ `"experiment parameters"`:
+
+```json
+{
+  "_id": "uuid-string",
+  "specimen": "Название образца",
+  "datetime": "...",
+  "timestamp": 1746619237.0,
+  "experiment parameters": {
+    "advanced": true,
+    "series_length": 10,
+    "empty_period": 50,
+    "data_total": 500
+  }
+}
+```
+
+> ⚠️ **Ловушка**: `exp_info['series_length']` не существует — нужно `exp_info['experiment parameters']['series_length']`.
+> Код реконструкции (`tomotools4._read_series_length_from_hdf5`) читает правильно начиная с commit `825536e`.
+
+#### Ключи датасетов (frame_numbers)
+
+Датасеты внутри групп именуются строковым представлением глобального `frame_num` с zero-padding:
+- `"000020"`, `"000021"`, ... — порядковый номер кадра в рамках всего эксперимента
+- Порядок: dark → initial_empty → data[0] → ... → periodic_empty → data_check → data[N] → ...
+- Для разделения initial vs periodic empty кадров используют сравнение `frame_number` с `frame_numbers` первых data-кадров
+
 ---
 
 ## Форматы экспериментов
