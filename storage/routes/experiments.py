@@ -37,6 +37,10 @@ def get_experiments():
 # create new experiment, need json file as request return result:success json if success
 @bp_experiments.route('/create', methods=['POST'])
 def create_experiment():
+    """
+    Создаёт новый эксперимент.
+    Все новые эксперименты создаются в формате HDF5 v2.
+    """
     if not request.data:
         logger.error('Incorrect format')
         abort(400)
@@ -51,10 +55,12 @@ def create_experiment():
     insert_query.pop('exp_id', None)
     insert_query['_id'] = experiment_id
 
-    if fs.create_experiment(experiment_id, dumps(insert_query)):
+    # Все новые эксперименты создаются в формате v2
+    if fs.create_experiment(experiment_id, dumps(insert_query), use_v2=True):
         insert_query['finished'] = False
         experiments.insert(insert_query)
 
+        logger.info(f'Created experiment {experiment_id} in HDF5 v2 format')
         return jsonify({'result': 'success'})
     else:
         return jsonify({'result': 'experiment {} already exists in file system'.format(experiment_id)})
@@ -62,6 +68,10 @@ def create_experiment():
 
 @bp_experiments.route('/finish', methods=['POST'])
 def finish_experiment():
+    """
+    Завершает эксперимент.
+    Для формата v2 создаёт mapping индексы.
+    """
     if not request.data:
         logger.error('Incorrect format')
         abort(400)
@@ -76,6 +86,17 @@ def finish_experiment():
         if json_msg['message'] == 'Experiment was finished successfully':
             db.experiments.update({'_id': experiment_id},
                                   {'$set': {'finished': True}})
+            
+            # Для v2 финализируем HDF5 (создаём mapping)
+            from ..hdf5_v2 import finalize_experiment_v2
+            import os
+            hdf5_path = os.path.join('data', 'experiments', str(experiment_id), 'before_processing', f'{experiment_id}.h5')
+            if os.path.exists(hdf5_path):
+                try:
+                    finalize_experiment_v2(hdf5_path)
+                    logger.info(f'Finalized HDF5 v2 for experiment {experiment_id}')
+                except Exception as e:
+                    logger.warning(f'Failed to finalize HDF5 v2 for {experiment_id}: {e}')
         else:
             logger.warning(json_msg['exception message'] + json_msg['error'])
 

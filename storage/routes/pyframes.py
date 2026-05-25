@@ -12,12 +12,66 @@ import matplotlib.pyplot as plt
 
 from flask import current_app as app
 
+from ..hdf5_v2 import add_frame_v2, is_hdf5_v2
+
 logger = app.logger
 
 
 def add_frame(frame, frame_info, frame_number, frame_type, frame_id, experiment_id):
+    """
+    Добавляет кадр в HDF5-файл эксперимента.
+    Автоматически определяет версию формата (v1 или v2).
+    
+    Args:
+        frame: numpy array кадра (H, W)
+        frame_info: JSON-строка с метаданными кадра (MongoDB документ)
+        frame_number: строковый номер кадра
+        frame_type: тип кадра (dark/empty/data/data_check)
+        frame_id: ObjectId кадра из MongoDB
+        experiment_id: UUID эксперимента
+    """
     frames_file_path = os.path.join('data', 'experiments', str(experiment_id), 'before_processing', '{}.h5'.format(experiment_id))
+    lock_path = frames_file_path + '.lock'
 
+    # Определяем версию формата
+    use_v2 = os.path.exists(frames_file_path) and is_hdf5_v2(frames_file_path)
+    
+    if use_v2:
+        _add_frame_v2_wrapper(frame, frame_info, frame_number, frame_type, frame_id, experiment_id, lock_path)
+    else:
+        _add_frame_v1_wrapper(frame, frame_info, frame_number, frame_type, frame_id, experiment_id, lock_path)
+
+    # Генерация PNG превью (асинхронно)
+    png_file_path = os.path.abspath(os.path.join('data', 'experiments', str(experiment_id), 'before_processing', 'png',
+                                 str(frame_id) + '.png'))
+    Thread(target=make_png, args=(frame, png_file_path)).start()
+    logger.info('png: start making png from frame {} of experiment {}'.format(frame_id, experiment_id))
+
+
+def _add_frame_v2_wrapper(frame, frame_info, frame_number, frame_type, frame_id, experiment_id, lock_path):
+    """Обёртка для записи в формат v2."""
+    try:
+        # Парсим frame_info из JSON
+        frame_info_dict = json.loads(frame_info)
+        frame_payload = frame_info_dict.get('frame', frame_info_dict)
+        
+        # Добавляем кадр
+        frame_index, is_first = add_frame_v2(
+            hdf5_path=os.path.join('data', 'experiments', str(experiment_id), 'before_processing', f'{experiment_id}.h5'),
+            frame=frame,
+            frame_info=frame_payload,
+            lock_timeout=60
+        )
+        
+        logger.info(f'v2: added frame {frame_id} at index {frame_index} (first={is_first})')
+        
+    except Exception as e:
+        logger.error(f'v2: failed to add frame {frame_id}: {e}')
+        raise
+
+
+def _add_frame_v1_wrapper(frame, frame_info, frame_number, frame_type, frame_id, experiment_id, lock_path):
+    """Обёртка для записи в legacy формат v1."""
     # Extract detector info from frame_info JSON
     try:
         frame_info_dict = json.loads(frame_info)
@@ -30,29 +84,15 @@ def add_frame(frame, frame_info, frame_number, frame_type, frame_id, experiment_
         detector_model = ''
         pixel_size = 4.25e-3
 
-    lock_path = frames_file_path + '.lock'
     with portalocker.Lock(lock_path, timeout=60):
-        with h5py.File(frames_file_path, 'r+') as frames_file:
+        with h5py.File(os.path.join('data', 'experiments', str(experiment_id), 'before_processing', f'{experiment_id}.h5'), 'r+') as frames_file:
             frames_file[frame_type].create_dataset(str(frame_number), data=frame, compression="gzip", compression_opts=4)
             ds = frames_file[frame_type][str(frame_number)]
             ds.attrs["frame_info"] = frame_info.encode('utf8')
             ds.attrs["detector_model"] = detector_model
             ds.attrs["pixel_size"] = pixel_size
 
-    logger.info('hdf5 file: add frame {} to experiment {} successfully'.format(frame_id, experiment_id))
-
-    png_file_path = os.path.abspath(os.path.join('data', 'experiments', str(experiment_id), 'before_processing', 'png',
-                                 str(frame_id) + '.png'))
-    Thread(target=make_png, args=(frame, png_file_path)).start()
-    logger.info('png: start making png from frame {} of experiment {}'.format(frame_id, experiment_id))
-
-# TODO: remove method as unused
-def delete_frame(frame_number, frame_type, frame_id,  experiment_id):
-    frames_file_path = os.path.join('data', 'experiments', str(experiment_id), 'before_processing', '{}.h5'.format(experiment_id))
-    with h5py.File(frames_file_path, 'r+') as frames_file:
-        del frames_file[frame_type][str(frame_number)]
-    logger.info(
-        'hdf5 file: frame {} was deleted from experiment {} successfully'.format(str(frame_id), str(experiment_id)))
+    logger.info('hdf5 v1: add frame {} to experiment {} successfully'.format(frame_id, experiment_id))
 
 
 def make_png(frame, png_path):
@@ -69,3 +109,12 @@ def make_png(frame, png_path):
     fig.savefig(png_path, dpi=72)
     plt.close(fig)
     logger.info('png was made')
+
+# TODO: remove method as unused
+def delete_frame(frame_number, frame_type, frame_id,  experiment_id):
+    frames_file_path = os.path.join('data', 'experiments', str(experiment_id), 'before_processing', '{}.h5'.format(experiment_id))
+    with h5py.File(frames_file_path, 'r+') as frames_file:
+        del frames_file[frame_type][str(frame_number)]
+    logger.info(
+        'hdf5 file: frame {} was deleted from experiment {} successfully'.format(str(frame_id), str(experiment_id)))
+

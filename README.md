@@ -32,13 +32,107 @@ docker compose up -d
 ```
 data/experiments/<exp_id>/
 ├── before_processing/
-│   ├── <exp_id>.h5          # HDF5 с кадрами (группы по типу)
+│   ├── <exp_id>.h5          # HDF5 с кадрами
 │   └── png/
 │       └── <frame_id>.png   # PNG превью для каждого кадра
 └── after_processing/
 ```
 
-### Структура HDF5-файла
+---
+
+## Форматы HDF5
+
+### HDF5 v2 (текущий, с 2025)
+
+Все новые эксперименты создаются в формате **HDF5 v2** с единой временной осью (timeline) и типизированными метаданными.
+
+#### Структура HDF5 v2
+
+```
+<exp_id>.h5
+├── attrs
+│   ├── format_version       # "v2" (дублирование для совместимости)
+│   ├── created_at           # ISO datetime
+│   ├── exp_info_json        # полный MongoDB документ (совместимость)
+│   ├── images_initialized   # bool
+│   └── total_frames         # int
+│
+├── metadata/                # Константы эксперимента
+│   ├── format_version       # "v2" (явная версия в metadata)
+│   ├── experiment_id        # str
+│   ├── specimen             # str
+│   ├── tags                 # str
+│   ├── timestamp            # float64
+│   ├── datetime             # str
+│   ├── is_advanced          # bool
+│   ├── series_length        # int32
+│   ├── empty_period         # int32
+│   ├── data_total           # int32
+│   ├── detector_model       # str
+│   ├── pixel_size           # float32 (мм)
+│   ├── source_voltage       # float32 (кВ)
+│   └── source_current       # float32 (мкА)
+│
+├── timeline/                # Типизированные массивы, shape (N_total,)
+│   ├── frame_numbers        # int64
+│   ├── modes                # uint8 (0=dark, 1=empty, 2=data, 3=data_check)
+│   ├── angles               # float32 (градусы)
+│   ├── exposures            # float32 (мс)
+│   ├── timestamps           # float64 (UNIX time)
+│   ├── object_present       # bool
+│   ├── shutter_open         # bool
+│   ├── chip_temp            # float32
+│   ├── hous_temp            # float32
+│   ├── horizontal_pos       # int32
+│   ├── vertical_pos         # int32
+│   └── segment_ids          # int32 (-1=dark, 0=initial, 1+=periodic)
+│
+├── images/
+│   └── all                  # uint16[N_total, H, W], chunked, gzip
+│
+└── mapping/                 # Индексы для быстрого доступа (после финализации)
+    ├── dark_indices         # int32[N_dark]
+    ├── empty_indices        # int32[N_empty]
+    ├── data_indices         # int32[N_data]
+    ├── data_check_indices   # int32[N_dc]
+    ├── checkpoint_data_indices   # int32[K]
+    └── checkpoint_dc_indices     # int32[K]
+```
+
+#### Преимущества v2
+
+| Аспект | v1 (legacy) | v2 (current) |
+|---|---|---|
+| Чтение метаданных кадра | JSON-парсинг × N | Прямой доступ к массивам |
+| Доступ к кадрам | N отдельных датасетов | Единый массив, срезы |
+| Сортировка по времени | Строковые ключи | Уже отсортированы |
+| Поддержка advanced | Раздельные группы | Единая timeline + segment_ids |
+| Поиск checkpoint | O(N) по углам | O(1) через mapping |
+| Размер метаданных | ~500 байт/кадр | ~60 байт/кадр |
+
+#### Автодетекция версии
+
+```python
+from storage.hdf5_v2 import is_hdf5_v2
+
+if is_hdf5_v2(filepath):
+    # Чтение v2 (проверяет наличие /timeline и format_version='v2' в metadata)
+    # Версия доступна как: f['metadata/format_version'][()].decode('utf8')
+else:
+    # Чтение v1 (legacy)
+```
+
+**Двойная проверка версии:**
+- Быстрая: наличие группы `/timeline`
+- Точная: `metadata/format_version == 'v2'` (типизированный датасет)
+
+---
+
+### HDF5 v1 (legacy, до 2025)
+
+Старый формат с раздельными группами для каждого типа кадров. Поддерживается только для чтения существующих экспериментов.
+
+#### Структура HDF5 v1
 
 ```
 <exp_id>.h5
@@ -53,36 +147,14 @@ data/experiments/<exp_id>/
     └── <number>
 ```
 
-> **Примечание**: группа `data_check` добавлена для поддержки продвинутого режима эксперимента.
+> ⚠️ **Ловушка v1**: `exp_info` содержит полный MongoDB-документ. Параметры эксперимента вложены в ключ `"experiment parameters"`.  
+> Правильно: `exp_info['experiment parameters']['series_length']` (не `exp_info['series_length']`).
 
-#### Атрибут `exp_info` в HDF5
-
-Атрибут `exp_info` в корне HDF5-файла — это полный JSON-документ эксперимента из MongoDB, сериализованный через `bson.json_util.dumps`. Параметры эксперимента **вложены** в ключ `"experiment parameters"`:
-
-```json
-{
-  "_id": "uuid-string",
-  "specimen": "Название образца",
-  "datetime": "...",
-  "timestamp": 1746619237.0,
-  "experiment parameters": {
-    "advanced": true,
-    "series_length": 10,
-    "empty_period": 50,
-    "data_total": 500
-  }
-}
-```
-
-> ⚠️ **Ловушка**: `exp_info['series_length']` не существует — нужно `exp_info['experiment parameters']['series_length']`.
-> Код реконструкции (`tomotools4._read_series_length_from_hdf5`) читает правильно начиная с commit `825536e`.
-
-#### Ключи датасетов (frame_numbers)
+#### Ключи датасетов (frame_numbers) v1
 
 Датасеты внутри групп именуются строковым представлением глобального `frame_num` с zero-padding:
 - `"000020"`, `"000021"`, ... — порядковый номер кадра в рамках всего эксперимента
 - Порядок: dark → initial_empty → data[0] → ... → periodic_empty → data_check → data[N] → ...
-- Для разделения initial vs periodic empty кадров используют сравнение `frame_number` с `frame_numbers` первых data-кадров
 
 ---
 
@@ -136,15 +208,6 @@ data/experiments/<exp_id>/
 
 **Типы кадров:** `dark`, `empty`, `data`, `data_check`
 
-#### Чем отличается продвинутый режим
-
-| Аспект | Простой | Продвинутый |
-|---|---|---|
-| Экспозиции | Раздельные для dark/empty/data | Единая для всех |
-| empty-серии | Только в начале | В начале + периодически каждые N позиций |
-| `data_check` кадры | Нет | Да — после каждой периодической empty-серии |
-| HDF5-группы | dark, empty, data | dark, empty, data, data_check |
-
 #### Назначение `data_check`
 
 После каждой периодической серии empty-кадров снимается `data_count_per_step` кадров с тем же угловым положением, что и предыдущий data-кадр. Эти кадры нужны для:
@@ -190,15 +253,17 @@ data/experiments/<exp_id>/
 }
 ```
 
+В формате **v2** эти данные хранятся в типизированных массивах `timeline/`, а не как JSON для каждого кадра.
+
 ---
 
 ## HTTP API
 
 | Метод | URL | Описание |
 |---|---|---|
-| POST | `/storage/experiments/create` | Создать новый эксперимент |
+| POST | `/storage/experiments/create` | Создать новый эксперимент (всегда v2) |
 | POST | `/storage/experiments/get` | Получить список экспериментов (фильтр в JSON) |
-| POST | `/storage/experiments/finish` | Завершить эксперимент |
+| POST | `/storage/experiments/finish` | Завершить эксперимент (финализация v2) |
 | DELETE | `/storage/experiments/<id>` | Удалить эксперимент |
 | POST | `/storage/frames/post` | Добавить кадр (multipart: data + file) |
 | POST | `/storage/frames_info/get` | Получить метаданные кадров |
@@ -214,3 +279,22 @@ PNG генерируется асинхронно в фоновом потоке
 
 > Из-за асинхронной генерации PNG может быть недоступен сразу после записи кадра.
 > `rbtm-web` делает до 5 попыток с задержкой 3 сек при получении 404.
+
+---
+
+## Модули
+
+### `hdf5_v2.py`
+
+Модуль записи и чтения формата HDF5 v2.
+
+**Ключевые функции:**
+- `is_hdf5_v2(filepath)` — автодетекция версии
+- `create_experiment_hdf5_v2(exp_id, params)` — создание файла
+- `add_frame_v2(hdf5_path, frame, frame_info)` — добавление кадра
+- `finalize_experiment_v2(hdf5_path)` — создание mapping индексов
+- `get_experiment_info_v2(hdf5_path)` — чтение метаданных
+
+### `pyframes.py`
+
+Модуль добавления кадров с автодетекцией версии формата.
