@@ -53,6 +53,9 @@ def _add_frame_v2_wrapper(frame, frame_info, frame_number, frame_type, frame_id,
     try:
         # Парсим frame_info из JSON
         frame_info_dict = json.loads(frame_info)
+        # Защита: если пришел список (старый формат find()), берем первый элемент
+        if isinstance(frame_info_dict, list) and len(frame_info_dict) > 0:
+            frame_info_dict = frame_info_dict[0]
         frame_payload = frame_info_dict.get('frame', frame_info_dict)
         
         # Добавляем кадр

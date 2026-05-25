@@ -37,7 +37,8 @@ def new_frame():
     frame_id = db['frames'].insert(json_frame)
     frame_number = str(json_frame['frame']['number'])
     frame_type = str(json_frame['frame']['mode'])
-    frame_info = dumps(db['frames'].find({"_id": ObjectId(frame_id)}))
+    frame_doc = db['frames'].find_one({"_id": ObjectId(frame_id)})
+    frame_info = dumps(frame_doc)
 
     pyframes.add_frame(image_array, frame_info, frame_number, frame_type, frame_id, experiment_id)
 
