@@ -251,6 +251,11 @@ def create_experiment_hdf5_v2(
         f.attrs['total_frames'] = total_frames
         f.attrs['current_frame_index'] = 0
     
+    # Создаём маркер v2 рядом с файлом — используется в pyframes.add_frame()
+    # для определения версии без повторного открытия HDF5 (избегаем race condition)
+    with open(hdf5_path + '.v2', 'w') as marker:
+        marker.write('v2')
+
     logger.info(f'Created HDF5 v2 file: {hdf5_path} (total_frames={total_frames})')
     return hdf5_path
 
@@ -277,9 +282,10 @@ def add_frame_v2(
     
     with portalocker.Lock(lock_path, timeout=lock_timeout):
         with h5py.File(hdf5_path, 'r+') as f:
-            # Проверяем версию
-            if not is_hdf5_v2(hdf5_path):
-                raise ValueError(f'File {hdf5_path} is not HDF5 v2 format')
+            # Проверяем версию по содержимому уже открытого файла
+            # (не вызываем is_hdf5_v2 повторно — это открыло бы файл ещё раз)
+            if 'timeline' not in f:
+                raise ValueError(f'File {hdf5_path} is not HDF5 v2 format (no timeline group)')
             
             # Получаем текущий индекс
             current_idx = int(f.attrs['current_frame_index'])
@@ -431,8 +437,8 @@ def finalize_experiment_v2(hdf5_path: str, lock_timeout: int = 60) -> None:
     
     with portalocker.Lock(lock_path, timeout=lock_timeout):
         with h5py.File(hdf5_path, 'r+') as f:
-            if not is_hdf5_v2(hdf5_path):
-                raise ValueError(f'File {hdf5_path} is not HDF5 v2 format')
+            if 'timeline' not in f:
+                raise ValueError(f'File {hdf5_path} is not HDF5 v2 format (no timeline group)')
             
             timeline = f['timeline']
             modes = timeline['modes'][:]
@@ -518,8 +524,8 @@ def get_experiment_info_v2(hdf5_path: str) -> Dict[str, Any]:
         Dict с метаданными
     """
     with h5py.File(hdf5_path, 'r') as f:
-        if not is_hdf5_v2(hdf5_path):
-            raise ValueError(f'File {hdf5_path} is not HDF5 v2 format')
+        if 'timeline' not in f:
+            raise ValueError(f'File {hdf5_path} is not HDF5 v2 format (no timeline group)')
         
         metadata = f['metadata']
         

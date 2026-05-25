@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 from flask import current_app as app
 
-from ..hdf5_v2 import add_frame_v2, is_hdf5_v2
+from ..hdf5_v2 import add_frame_v2
 
 logger = app.logger
 
@@ -33,9 +33,12 @@ def add_frame(frame, frame_info, frame_number, frame_type, frame_id, experiment_
     frames_file_path = os.path.join('data', 'experiments', str(experiment_id), 'before_processing', '{}.h5'.format(experiment_id))
     lock_path = frames_file_path + '.lock'
 
-    # Определяем версию формата
-    use_v2 = os.path.exists(frames_file_path) and is_hdf5_v2(frames_file_path)
-    
+    # Версию определяем по наличию маркера (без открытия HDF5 — избегаем конкуренции с add_frame_v2).
+    # create_experiment всегда создаёт v2; v2-файл рядом имеет .lock файл с суффиксом,
+    # но надёжнее проверить по флагу рядом с файлом.
+    v2_marker = frames_file_path + '.v2'
+    use_v2 = os.path.exists(v2_marker)
+
     if use_v2:
         _add_frame_v2_wrapper(frame, frame_info, frame_number, frame_type, frame_id, experiment_id, lock_path)
     else:
