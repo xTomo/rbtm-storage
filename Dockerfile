@@ -1,4 +1,4 @@
-FROM ubuntu:bionic
+FROM python:3.11-slim
 
 MAINTAINER buzmakov
 
@@ -6,15 +6,14 @@ ENV TZ=Europe/Moscow
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN apt-get update \
- && apt-get install -y python python3 python3-pip nginx supervisor pkg-config \
-                       libfreetype6-dev python3-numpy python3-matplotlib python3-scipy \
-                       libhdf5-dev \
+ && apt-get install -y nginx supervisor pkg-config \
+                       libfreetype6-dev \
  && rm -rf /var/lib/apt/lists/*
 
 COPY requirements_docker.txt /var/www/storage/requirements_docker.txt
 WORKDIR /var/www/storage/
 
-RUN pip3 install -r requirements_docker.txt
+RUN pip install --no-cache-dir -r requirements_docker.txt
 
 COPY . /var/www/storage/
 

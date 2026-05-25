@@ -1,14 +1,15 @@
 import json
+import os
 
 import pymongo as pm
 from bson.json_util import dumps
 from flask import current_app as app
-from flask import jsonify, request, abort, Response, Blueprint, g
+from flask import jsonify, request, abort, Response, Blueprint
 
 from storage import filesystem as fs
+from ..db import get_db
 
 logger = app.logger
-db = g.db
 bp_experiments = Blueprint('experiments', __name__, url_prefix='/storage/experiments')
 
 
@@ -23,6 +24,7 @@ def get_experiments():
 
     find_query = json.loads(request.data.decode())
 
+    db = get_db()
     experiments = db['experiments']
 
     cursor = experiments.find(find_query).sort('timestamp', pm.DESCENDING)
@@ -49,6 +51,7 @@ def create_experiment():
 
     insert_query = json.loads(request.data.decode())
 
+    db = get_db()
     experiments = db['experiments']
 
     experiment_id = insert_query['exp_id']
@@ -84,12 +87,12 @@ def finish_experiment():
 
     if json_msg['type'] == 'message':
         if json_msg['message'] == 'Experiment was finished successfully':
+            db = get_db()
             db.experiments.update({'_id': experiment_id},
                                   {'$set': {'finished': True}})
             
             # Для v2 финализируем HDF5 (создаём mapping)
             from ..hdf5_v2 import finalize_experiment_v2
-            import os
             hdf5_path = os.path.join('data', 'experiments', str(experiment_id), 'before_processing', f'{experiment_id}.h5')
             if os.path.exists(hdf5_path):
                 try:
@@ -108,6 +111,7 @@ def delete_experiment(experiment_id):
     json_result = jsonify({'deleted': 'success'})
     logger.info('Deleting experiment: ' + experiment_id)
 
+    db = get_db()
     experiments = db['experiments']
     frames = db['frames']
 

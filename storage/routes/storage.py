@@ -1,7 +1,7 @@
 import os, json
 
 from flask import current_app as app
-from flask import Blueprint, request, abort, jsonify, Response, send_file, g
+from flask import Blueprint, request, abort, jsonify, Response, send_file
 
 import numpy as np
 import pymongo as pm
@@ -10,10 +10,10 @@ from bson.json_util import dumps
 from bson.objectid import ObjectId
 
 from . import pyframes
+from ..db import get_db
 
 
 logger = app.logger
-db = g.db
 bp_storage = Blueprint('storage', __name__, url_prefix='/storage')
 
 
@@ -34,6 +34,7 @@ def new_frame():
     image_array = np.load(frame.stream)['frame_data']
     logger.info('Image array has been loaded!')
 
+    db = get_db()
     frame_id = db['frames'].insert(json_frame)
     frame_number = str(json_frame['frame']['number'])
     frame_type = str(json_frame['frame']['mode'])
@@ -57,6 +58,7 @@ def get_frame_info():
 
     find_query = json.loads(request.data.decode())
 
+    db = get_db()
     frames = db['frames']
 
     cursor = frames.find(find_query).sort('frame.number', pm.ASCENDING)
