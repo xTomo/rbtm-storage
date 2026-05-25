@@ -334,7 +334,7 @@ def add_frame_v2(
             # Расширяем timeline на 1 элемент
             for name in timeline.keys():
                 ds = timeline[name]
-                ds.resize((current_idx + 1,), axis=0)
+                ds.resize(current_idx + 1, axis=0)
                 ds[current_idx] = {
                     'frame_numbers': int(frame_info.get('number', current_idx)),
                     'modes': mode_code,
