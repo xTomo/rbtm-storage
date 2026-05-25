@@ -3,7 +3,7 @@ Werkzeug==2.3.7
 h5py==3.11.0
 matplotlib==3.8.4
 numpy==1.26.4
-pymongo==2.8
+pymongo==3.13.0
 python-dateutil==2.9.0
 pytz==2024.1
 scipy==1.13.1
