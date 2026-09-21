@@ -133,3 +133,16 @@ def test_advanced_long_experiment_keeps_series_chunk(tmp_path, monkeypatch):
 
     with h5py.File(hdf5_path, 'r') as f:
         assert f['images/all'].chunks == (12, 4, 5)
+
+
+def test_compute_total_frames_default_count_per_step():
+    """drivers допускают отсутствие 'count per step' / 'data_count_per_step' — default 1."""
+    simple = _simple_params(dark=1, empty=1, step_count=5)
+    del simple['experiment parameters']['DATA']['count per step']
+    assert hdf5_v2.compute_total_frames(simple) == 1 + 1 + 5
+
+    advanced = _advanced_params(series_length=2, data_total=3)
+    del advanced['experiment parameters']['data_count_per_step']
+    assert hdf5_v2.compute_total_frames(advanced) == hdf5_v2.compute_total_frames(
+        _advanced_params(series_length=2, data_total=3, data_count_per_step=1)
+    )
