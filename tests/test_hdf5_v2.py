@@ -50,14 +50,24 @@ def _simple_params(dark, empty, step_count, count_per_step=1):
     }
 
 
-def _frame_info(number, mode):
-    return {
+def _frame_info(number, mode, angle=None, **overrides):
+    info = {
         'number': number,
         'mode': mode,
-        'image_data': {'exposure': 100.0, 'timestamp': float(number)},
-        'object': {'angle position': float(number), 'present': mode != 'empty'},
+        'image_data': {'exposure': 100.0, 'timestamp': float(number), 'chip_temp': 25.0, 'hous_temp': 28.0},
+        'object': {
+            'angle position': float(number) if angle is None else angle,
+            'present': mode != 'empty',
+            'horizontal position': 0,
+            'vertical position': 0,
+        },
         'shutter': {'open': True},
+        'X-ray source': {'voltage': 40.0, 'current': 20.0},
     }
+    for path, value in overrides.items():
+        group, key = path.split('.')
+        info[group][key] = value
+    return info
 
 
 def _run_experiment(params, modes, frame_shape=(4, 5)):
@@ -146,3 +156,127 @@ def test_compute_total_frames_default_count_per_step():
     assert hdf5_v2.compute_total_frames(advanced) == hdf5_v2.compute_total_frames(
         _advanced_params(series_length=2, data_total=3, data_count_per_step=1)
     )
+
+
+def test_none_metadata_values_do_not_crash_and_become_nan(tmp_path, monkeypatch):
+    """None в числовых полях метаданных (drivers._safe_read) не должны ронять запись."""
+    monkeypatch.chdir(tmp_path)
+    params = _simple_params(dark=0, empty=0, step_count=2)
+    hdf5_path = hdf5_v2.create_experiment_hdf5_v2('exp-test', params)
+    frame = np.zeros((4, 5), dtype='uint16')
+
+    info = _frame_info(0, 'data', **{'image_data.chip_temp': None, 'object.angle position': None})
+    hdf5_v2.add_frame_v2(hdf5_path, frame, info)
+    # второй кадр в норме, чтобы убедиться, что запись продолжается штатно
+    hdf5_v2.add_frame_v2(hdf5_path, frame, _frame_info(1, 'data'))
+
+    with h5py.File(hdf5_path, 'r') as f:
+        timeline = f['timeline']
+        assert np.isnan(timeline['chip_temp'][0])
+        assert np.isnan(timeline['angles'][0])
+        assert not np.isnan(timeline['angles'][1])
+
+
+def test_none_int_and_bool_fields_default_with_warning(tmp_path, monkeypatch, caplog):
+    """None в int/bool-полях -> 0/False с предупреждением в лог."""
+    monkeypatch.chdir(tmp_path)
+    params = _simple_params(dark=0, empty=0, step_count=1)
+    hdf5_path = hdf5_v2.create_experiment_hdf5_v2('exp-test', params)
+    frame = np.zeros((4, 5), dtype='uint16')
+
+    info = _frame_info(
+        0, 'data',
+        **{
+            'object.horizontal position': None,
+            'object.vertical position': None,
+            'object.present': None,
+            'shutter.open': None,
+        }
+    )
+    with caplog.at_level('WARNING'):
+        hdf5_v2.add_frame_v2(hdf5_path, frame, info)
+
+    with h5py.File(hdf5_path, 'r') as f:
+        timeline = f['timeline']
+        assert timeline['horizontal_pos'][0] == 0
+        assert timeline['vertical_pos'][0] == 0
+        assert bool(timeline['object_present'][0]) is False
+        assert bool(timeline['shutter_open'][0]) is False
+    assert 'is None' in caplog.text
+
+
+def test_horizontal_position_float_is_rounded_not_truncated(tmp_path, monkeypatch):
+    """'horizontal position' у drivers может быть float (шаги + микрошаги) — округляем."""
+    monkeypatch.chdir(tmp_path)
+    params = _simple_params(dark=0, empty=0, step_count=1)
+    hdf5_path = hdf5_v2.create_experiment_hdf5_v2('exp-test', params)
+    frame = np.zeros((4, 5), dtype='uint16')
+
+    info = _frame_info(0, 'data', **{'object.horizontal position': 12.6})
+    hdf5_v2.add_frame_v2(hdf5_path, frame, info)
+
+    with h5py.File(hdf5_path, 'r') as f:
+        assert int(f['timeline/horizontal_pos'][0]) == 13  # round(), не int()/truncate
+
+
+def test_first_frame_fills_source_and_detector_metadata(tmp_path, monkeypatch):
+    """Первый кадр дозаполняет source_voltage/current и (если пусто) detector_model/pixel_size."""
+    monkeypatch.chdir(tmp_path)
+    params = _simple_params(dark=0, empty=0, step_count=2)
+    hdf5_path = hdf5_v2.create_experiment_hdf5_v2('exp-test', params)
+    frame = np.zeros((4, 5), dtype='uint16')
+
+    info = _frame_info(0, 'data')
+    info['X-ray source'] = {'voltage': 42.0, 'current': 21.5}
+    info['image_data']['detector'] = {'model': 'MH110XC-KK-FA', 'pixel_size': 0.00425}
+    hdf5_v2.add_frame_v2(hdf5_path, frame, info)
+
+    # Второй кадр с другим детектором не должен переопределить уже заполненные метаданные
+    info2 = _frame_info(1, 'data')
+    info2['X-ray source'] = {'voltage': 99.0, 'current': 99.0}
+    info2['image_data']['detector'] = {'model': 'OTHER', 'pixel_size': 999.0}
+    hdf5_v2.add_frame_v2(hdf5_path, frame, info2)
+
+    with h5py.File(hdf5_path, 'r') as f:
+        metadata = f['metadata']
+        assert float(metadata['source_voltage'][()]) == 42.0
+        assert float(metadata['source_current'][()]) == 21.5
+        assert str(metadata['detector_model'][()], 'utf8') == 'MH110XC-KK-FA'
+        assert float(metadata['pixel_size'][()]) == 0.00425
+
+
+def test_segment_ids_sequence(tmp_path, monkeypatch):
+    """Семантика segment_ids: -1 dark, 0 initial, k>=1 k-я periodic-вставка."""
+    monkeypatch.chdir(tmp_path)
+    modes = ['dark', 'dark', 'empty', 'empty', 'data', 'data',
+             'empty', 'empty', 'data_check', 'data', 'data',
+             'empty', 'empty', 'data_check', 'data']
+    params = _advanced_params(series_length=2, data_total=5, empty_period=2)
+    hdf5_path = _run_experiment(params, modes)
+
+    with h5py.File(hdf5_path, 'r') as f:
+        segment_ids = list(f['timeline/segment_ids'][:])
+
+    assert segment_ids == [-1, -1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2]
+
+
+def test_segment_ids_sequence_with_count_per_step_2(tmp_path, monkeypatch):
+    """Та же семантика при data_count_per_step=2 (несколько data/data_check на шаг)."""
+    monkeypatch.chdir(tmp_path)
+    modes = [
+        'dark', 'dark',
+        'empty', 'empty',
+        'data', 'data',            # step 1 (cps=2)
+        'data', 'data',            # step 2 (cps=2)
+        'empty', 'empty',          # вставка 1
+        'data_check', 'data_check',
+        'data', 'data',            # step 3
+        'data', 'data',            # step 4
+    ]
+    params = _advanced_params(series_length=2, data_total=4, empty_period=2, data_count_per_step=2)
+    hdf5_path = _run_experiment(params, modes)
+
+    with h5py.File(hdf5_path, 'r') as f:
+        segment_ids = list(f['timeline/segment_ids'][:])
+
+    assert segment_ids == [-1, -1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1]

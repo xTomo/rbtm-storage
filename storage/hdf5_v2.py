@@ -253,6 +253,10 @@ def create_experiment_hdf5_v2(
         f.attrs['total_frames'] = total_frames
         f.attrs['current_frame_index'] = 0
 
+        # Состояние для O(1)-вычисления segment_id в _compute_segment_id
+        f.attrs['current_segment'] = 0
+        f.attrs['last_mode'] = ''
+
     # Создаём маркер v2 рядом с файлом — используется в pyframes.add_frame()
     # для определения версии без повторного открытия HDF5 (избегаем race condition)
     with open(hdf5_path + '.v2', 'w') as marker:
@@ -292,11 +296,20 @@ def add_frame_v2(
             # Получаем текущий индекс
             current_idx = int(f.attrs['current_frame_index'])
             is_first_frame = (current_idx == 0)
+            total_frames = int(f.attrs['total_frames'])
+
+            if current_idx >= total_frames:
+                # Без этой проверки h5py упал бы на ds.resize() ниже с невнятным
+                # «dimension cannot exceed the existing maximal size».
+                raise ValueError(
+                    f'Cannot add frame to {hdf5_path}: experiment already has all '
+                    f'{total_frames} expected frames (current_frame_index={current_idx}). '
+                    f'Check experiment parameters (total frame count) or duplicate frame retry.'
+                )
 
             # Инициализируем images при первом кадре
             if not f.attrs.get('images_initialized', False):
                 H, W = frame.shape
-                total_frames = int(f.attrs['total_frames'])
 
                 # Определяем chunk size
                 is_advanced = bool(f['metadata/is_advanced'][()])
@@ -333,7 +346,24 @@ def add_frame_v2(
             source_info = frame_info.get('X-ray source', {})
 
             # Определяем segment_id
-            segment_id = _compute_segment_id(f, frame_info, current_idx)
+            segment_id = _compute_segment_id(f, mode_str)
+
+            # drivers (_safe_read) могут подставить None в любое числовое поле —
+            # собираем значения для timeline один раз (не пересобирая словарь на каждый датасет).
+            values = {
+                'frame_numbers': int(frame_info.get('number', current_idx)),
+                'modes': mode_code,
+                'angles': _safe_float(obj_info.get('angle position', 0.0)),
+                'exposures': _safe_float(image_data.get('exposure', 0.0)),
+                'timestamps': _safe_float(image_data.get('timestamp', 0.0)),
+                'object_present': _safe_bool(obj_info.get('present', True), 'object.present'),
+                'shutter_open': _safe_bool(shutter_info.get('open', False), 'shutter.open'),
+                'chip_temp': _safe_float(image_data.get('chip_temp', 0.0)),
+                'hous_temp': _safe_float(image_data.get('hous_temp', 0.0)),
+                'horizontal_pos': _safe_int(obj_info.get('horizontal position', 0), 'object.horizontal position'),
+                'vertical_pos': _safe_int(obj_info.get('vertical position', 0), 'object.vertical position'),
+                'segment_ids': segment_id,
+            }
 
             # Записываем в timeline
             timeline = f['timeline']
@@ -342,20 +372,12 @@ def add_frame_v2(
             for name in timeline.keys():
                 ds = timeline[name]
                 ds.resize(current_idx + 1, axis=0)
-                ds[current_idx] = {
-                    'frame_numbers': int(frame_info.get('number', current_idx)),
-                    'modes': mode_code,
-                    'angles': float(obj_info.get('angle position', 0.0)),
-                    'exposures': float(image_data.get('exposure', 0.0)),
-                    'timestamps': float(image_data.get('timestamp', 0.0)),
-                    'object_present': bool(obj_info.get('present', True)),
-                    'shutter_open': bool(shutter_info.get('open', False)),
-                    'chip_temp': float(image_data.get('chip_temp', 0.0)),
-                    'hous_temp': float(image_data.get('hous_temp', 0.0)),
-                    'horizontal_pos': int(obj_info.get('horizontal position', 0)),
-                    'vertical_pos': int(obj_info.get('vertical position', 0)),
-                    'segment_ids': segment_id,
-                }[name]
+                ds[current_idx] = values[name]
+
+            # На первом кадре дозаполняем metadata тем, что drivers присылают только
+            # в самих кадрах (на момент create_experiment этих данных ещё нет).
+            if is_first_frame:
+                _fill_metadata_from_first_frame(f, source_info, image_data)
 
             # Записываем кадр в images
             f['images/all'][current_idx] = frame
@@ -366,70 +388,112 @@ def add_frame_v2(
             return current_idx, is_first_frame
 
 
-def _compute_segment_id(f: h5py.File, frame_info: Dict[str, Any], current_idx: int) -> int:
-    """
-    Вычисляет segment_id для кадра.
+def _safe_float(value: Any) -> float:
+    """None (drivers _safe_read) -> NaN, иначе float."""
+    if value is None:
+        return float('nan')
+    return float(value)
 
-    Сегменты:
+
+def _safe_int(value: Any, field_name: str) -> int:
+    """None -> 0 (с предупреждением), иначе round() (не int()!).
+
+    'horizontal position' у drivers может быть float (шаги + микрошаги) —
+    округляем, а не усекаем.
+    """
+    if value is None:
+        logger.warning(f'{field_name} is None, using 0')
+        return 0
+    return int(round(float(value)))
+
+
+def _safe_bool(value: Any, field_name: str) -> bool:
+    """None -> False (с предупреждением), иначе bool."""
+    if value is None:
+        logger.warning(f'{field_name} is None, using False')
+        return False
+    return bool(value)
+
+
+def _compute_segment_id(f: h5py.File, mode_str: str) -> int:
+    """
+    Вычисляет segment_id для кадра и обновляет attrs файла — O(1), без
+    пересканирования timeline на каждый кадр.
+
+    Семантика:
       - -1: dark кадры
-      - 0: initial empty и data до первой periodic вставки
-      - 1+: data после periodic вставки k
+      -  0: начальная empty-серия и data до первой periodic-вставки
+      -  k≥1: k-я periodic-вставка — её empty-серия, её data_check и
+              data-кадры после неё до следующей вставки
+
+    Новая вставка обнаруживается по переходу data → empty: первый empty-кадр,
+    следующий сразу за data-кадром, начинает новый сегмент. Состояние
+    (номер текущего сегмента и режим предыдущего кадра) хранится в attrs
+    файла (f.attrs['current_segment'], f.attrs['last_mode']), поэтому
+    вычисление не требует чтения timeline.
 
     Args:
-        f: HDF5 файл (открыт для чтения)
-        frame_info: Метаданные кадра
-        current_idx: Текущий индекс в timeline
+        f: HDF5 файл (открыт для записи)
+        mode_str: режим текущего кадра ('dark'/'empty'/'data'/'data_check')
 
     Returns:
         segment_id (int)
     """
-    mode_str = frame_info.get('mode', 'data')
-
     if mode_str == 'dark':
-        return -1
+        segment_id = -1
+    else:
+        last_mode = f.attrs.get('last_mode', '')
+        current_segment = int(f.attrs.get('current_segment', 0))
+        if mode_str == 'empty' and last_mode == 'data':
+            current_segment += 1
+            f.attrs['current_segment'] = current_segment
+        segment_id = current_segment
 
-    if mode_str == 'empty':
-        # Все empty — сегмент 0 (initial)
-        return 0
+    f.attrs['last_mode'] = mode_str
+    return segment_id
 
-    if mode_str == 'data_check':
-        # data_check относится к предыдущему checkpoint
-        # Находим номер checkpoint по количеству data_check в timeline
-        timeline = f['timeline']
-        if current_idx == 0:
-            return 0
 
-        modes_so_far = timeline['modes'][:current_idx]
-        num_dc_so_far = int(np.sum(modes_so_far == FRAME_MODES['data_check']))
-        return num_dc_so_far + 1  # segment = checkpoint + 1
+def _fill_metadata_from_first_frame(
+    f: h5py.File,
+    source_info: Dict[str, Any],
+    image_data: Dict[str, Any],
+) -> None:
+    """
+    Дозаполняет metadata/source_voltage, source_current и (если пусто)
+    detector_model/pixel_size данными из первого кадра.
 
-    if mode_str == 'data':
-        # data — сегмент зависит от количества periodic вставок до этого кадра
-        timeline = f['timeline']
-        if current_idx == 0:
-            return 0
+    На момент create_experiment_hdf5_v2 источник и детектор ещё не известны
+    (source_info) или известны только приблизительно (detector_info по
+    умолчанию); drivers присылают их в самом кадре ('X-ray source',
+    'image_data.detector').
+    """
+    metadata = f['metadata']
 
-        modes_so_far = timeline['modes'][:current_idx]
-        # Считаем количество completed periodic empty серий
-        # Это число переходов empty после initial
-        empty_indices = np.where(modes_so_far == FRAME_MODES['empty'])[0]
+    voltage = source_info.get('voltage')
+    if voltage is not None:
+        metadata['source_voltage'][()] = float(voltage)
 
-        if len(empty_indices) == 0:
-            return 0
+    current = source_info.get('current')
+    if current is not None:
+        metadata['source_current'][()] = float(current)
 
-        # Начальная empty серия идёт сразу после dark
-        # periodic empty серии идут после data
-        # Считаем periodic как empty после первого data
-        data_indices = np.where(modes_so_far == FRAME_MODES['data'])[0]
-        if len(data_indices) == 0:
-            return 0  # ещё не было data
+    detector_info = image_data.get('detector') or {}
 
-        first_data_idx = data_indices[0]
-        periodic_empty_count = int(np.sum(empty_indices > first_data_idx))
+    current_model = metadata['detector_model'][()]
+    if isinstance(current_model, bytes):
+        current_model = current_model.decode('utf8')
+    if not current_model:
+        model = detector_info.get('model')
+        if model:
+            del metadata['detector_model']
+            metadata.create_dataset('detector_model', data=str(model).encode('utf8'))
 
-        return periodic_empty_count
-
-    return 0
+    # 4.25e-3 — дефолт из create_experiment_hdf5_v2, заменяем только если он не был переопределён
+    current_pixel_size = float(metadata['pixel_size'][()])
+    if current_pixel_size == 4.25e-3:
+        pixel_size = detector_info.get('pixel_size')
+        if pixel_size is not None:
+            metadata['pixel_size'][()] = float(pixel_size)
 
 
 def finalize_experiment_v2(hdf5_path: str, lock_timeout: int = 60) -> None:
