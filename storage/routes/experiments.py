@@ -67,7 +67,7 @@ def create_experiment():
     # Все новые эксперименты создаются в формате v2
     if fs.create_experiment(experiment_id, dumps(insert_query), use_v2=True, detector_info=detector_info):
         insert_query['finished'] = False
-        experiments.insert(insert_query)
+        experiments.insert_one(insert_query)
 
         logger.info(f'Created experiment {experiment_id} in HDF5 v2 format')
         return jsonify({'result': 'success'})
@@ -94,8 +94,8 @@ def finish_experiment():
     if json_msg['type'] == 'message':
         if json_msg['message'] == 'Experiment was finished successfully':
             db = get_db()
-            db.experiments.update({'_id': experiment_id},
-                                  {'$set': {'finished': True}})
+            db.experiments.update_one({'_id': experiment_id},
+                                      {'$set': {'finished': True}})
             
             # Для v2 финализируем HDF5 (создаём mapping)
             from ..hdf5_v2 import finalize_experiment_v2
@@ -122,27 +122,24 @@ def delete_experiment(experiment_id):
     frames = db['frames']
 
     exp_query = {'_id': experiment_id}
-    cursor = experiments.find(exp_query)
-    if cursor.count() == 0:
+    if experiments.count_documents(exp_query) == 0:
         logger.error('Experiment not found')
     else:
-        experiments.remove(exp_query)
-        if cursor.count() != 0:
+        experiments.delete_many(exp_query)
+        if experiments.count_documents(exp_query) != 0:
             logger.error("Can't remove experiment")
             json_result = jsonify({'deleted': 'fail'})
         else:
             logger.info("database: deleted experiment {} successfully".format(experiment_id))
 
     frames_query = {'exp_id': experiment_id}
-    frames.remove(frames_query)
-    if frames.find(frames_query).count() != 0:
+    frames.delete_many(frames_query)
+    if frames.count_documents(frames_query) != 0:
         logger.error("Can't remove frames")
         json_result = jsonify({'deleted': 'fail'})
     else:
         logger.info("database: deleted frames of {} successfully".format(experiment_id))
 
     fs.delete_experiment(experiment_id)
-
-    # db['reconstructions'].remove(request.get_json())
 
     return json_result
