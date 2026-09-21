@@ -304,6 +304,11 @@ def add_frame_v2(
                 else:
                     chunk_size = min(100, max(total_frames // 10, 10))
                 
+                # h5py требует chunk shape <= shape по каждой оси (maxshape не задан),
+                # иначе короткий эксперимент (< 10 кадров) падает на первом кадре
+                # с «chunk shape must not be greater than data shape».
+                chunk_size = max(1, min(chunk_size, total_frames))
+                
                 images_group = f.create_group('images')
                 images_group.create_dataset(
                     'all',

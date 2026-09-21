@@ -298,3 +298,12 @@ PNG генерируется асинхронно в фоновом потоке
 ### `pyframes.py`
 
 Модуль добавления кадров с автодетекцией версии формата.
+
+## Тесты
+
+Unit-тесты лежат в `tests/` и не требуют MongoDB и Flask (модуль `hdf5_v2` загружается напрямую из файла).
+
+```bash
+pip install pytest h5py numpy portalocker
+python -m pytest tests -q
+```
