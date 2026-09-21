@@ -1,0 +1,11 @@
+.git
+.idea
+.claude
+.pytest_cache
+data/
+logs/
+__pycache__/
+*.py[cod]
+tests/
+.gitignore
+.dockerignore

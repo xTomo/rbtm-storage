@@ -18,6 +18,6 @@ services:
     container_name: rbtmstorage_server_1
     ports:
       - "5006:5006"
-    # links:
-    #   - database
+    depends_on:
+      - database
     restart: unless-stopped
