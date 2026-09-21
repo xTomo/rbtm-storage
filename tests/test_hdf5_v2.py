@@ -280,3 +280,90 @@ def test_segment_ids_sequence_with_count_per_step_2(tmp_path, monkeypatch):
         segment_ids = list(f['timeline/segment_ids'][:])
 
     assert segment_ids == [-1, -1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1]
+
+
+def test_finalize_is_idempotent(tmp_path, monkeypatch):
+    """Повторный вызов finalize_experiment_v2 не падает (не «name already exists»)."""
+    monkeypatch.chdir(tmp_path)
+    params = _advanced_params(series_length=2, data_total=3, empty_period=10)
+    hdf5_path = _run_experiment(params, ['dark', 'dark', 'empty', 'empty', 'data', 'data', 'data'])
+
+    hdf5_v2.finalize_experiment_v2(hdf5_path)
+    hdf5_v2.finalize_experiment_v2(hdf5_path)  # не должно упасть
+
+    with h5py.File(hdf5_path, 'r') as f:
+        assert list(f['mapping/dark_indices'][:]) == [0, 1]
+        assert list(f['mapping/data_indices'][:]) == [4, 5, 6]
+
+
+def test_finalize_checkpoint_pairs_one_per_periodic_series(tmp_path, monkeypatch):
+    """Ровно одна checkpoint-пара на periodic-empty серию; data ищется по углу data_check."""
+    monkeypatch.chdir(tmp_path)
+    params = _advanced_params(series_length=2, data_total=5, empty_period=2, data_count_per_step=1)
+    assert hdf5_v2.compute_total_frames(params) == 15
+
+    hdf5_path = hdf5_v2.create_experiment_hdf5_v2('exp-test', params)
+    frame = np.zeros((4, 5), dtype='uint16')
+
+    frames = [
+        (0, 'dark', 0.0), (1, 'dark', 0.0),
+        (2, 'empty', 0.0), (3, 'empty', 0.0),
+        (4, 'data', 10.0), (5, 'data', 11.0),
+        (6, 'empty', 0.0), (7, 'empty', 0.0),
+        (8, 'data_check', 11.0),
+        (9, 'data', 12.0), (10, 'data', 13.0),
+        (11, 'empty', 0.0), (12, 'empty', 0.0),
+        (13, 'data_check', 13.0),
+        (14, 'data', 14.0),
+    ]
+    for number, mode, angle in frames:
+        hdf5_v2.add_frame_v2(hdf5_path, frame, _frame_info(number, mode, angle=angle))
+
+    hdf5_v2.finalize_experiment_v2(hdf5_path)
+
+    with h5py.File(hdf5_path, 'r') as f:
+        checkpoint_data = list(f['mapping/checkpoint_data_indices'][:])
+        checkpoint_dc = list(f['mapping/checkpoint_dc_indices'][:])
+        angles = f['timeline/angles'][:]
+
+    assert checkpoint_data == [5, 10]
+    assert checkpoint_dc == [8, 13]
+    for di, dci in zip(checkpoint_data, checkpoint_dc):
+        assert angles[di] == angles[dci]
+
+    # Повторный finalize идемпотентен и даёт тот же результат
+    hdf5_v2.finalize_experiment_v2(hdf5_path)
+    with h5py.File(hdf5_path, 'r') as f:
+        assert list(f['mapping/checkpoint_data_indices'][:]) == [5, 10]
+        assert list(f['mapping/checkpoint_dc_indices'][:]) == [8, 13]
+
+
+def test_finalize_checkpoint_pair_with_count_per_step_2(tmp_path, monkeypatch):
+    """cps=2: одна пара на checkpoint — первый dc ↔ последний data с тем же углом."""
+    monkeypatch.chdir(tmp_path)
+    params = _advanced_params(series_length=2, data_total=4, empty_period=2, data_count_per_step=2)
+    hdf5_path = hdf5_v2.create_experiment_hdf5_v2('exp-test', params)
+    frame = np.zeros((4, 5), dtype='uint16')
+
+    frames = [
+        (0, 'dark', 0.0), (1, 'dark', 0.0),
+        (2, 'empty', 0.0), (3, 'empty', 0.0),
+        (4, 'data', 10.0), (5, 'data', 10.0),     # step 1, cps=2
+        (6, 'data', 11.0), (7, 'data', 11.0),     # step 2, cps=2
+        (8, 'empty', 0.0), (9, 'empty', 0.0),     # periodic вставка
+        (10, 'data_check', 11.0), (11, 'data_check', 11.0),
+        (12, 'data', 12.0), (13, 'data', 12.0),   # step 3
+        (14, 'data', 13.0), (15, 'data', 13.0),   # step 4
+    ]
+    for number, mode, angle in frames:
+        hdf5_v2.add_frame_v2(hdf5_path, frame, _frame_info(number, mode, angle=angle))
+
+    hdf5_v2.finalize_experiment_v2(hdf5_path)
+
+    with h5py.File(hdf5_path, 'r') as f:
+        checkpoint_data = list(f['mapping/checkpoint_data_indices'][:])
+        checkpoint_dc = list(f['mapping/checkpoint_dc_indices'][:])
+
+    # первый dc checkpoint'а (index 10) ↔ последний data с тем же углом до него (index 7)
+    assert checkpoint_dc == [10]
+    assert checkpoint_data == [7]

@@ -500,6 +500,20 @@ def finalize_experiment_v2(hdf5_path: str, lock_timeout: int = 60) -> None:
     """
     Завершает эксперимент: создаёт mapping индексы.
 
+    Идемпотентна: повторный вызов (например, при повторном сообщении о
+    завершении эксперимента) не падает и просто пересчитывает mapping заново.
+
+    Checkpoint-пары (checkpoint_data_indices ↔ checkpoint_dc_indices): ровно
+    одна пара на каждую periodic-empty серию (K пар при K вставках), а не по
+    паре на каждый data_check-кадр серии. Пара строится так:
+      - dc_idx — первый (хронологически) data_check-кадр checkpoint'а, то
+        есть первый data_check-кадр после данной periodic empty-серии. При
+        data_count_per_step > 1 (несколько data_check-кадров на checkpoint)
+        это по-прежнему первый из них.
+      - data_idx — ближайший ПРЕДЫДУЩИЙ (до dc_idx) data-кадр с тем же углом,
+        что и у самого dc_idx (не у empty-кадра!), поскольку data_check
+        повторяет угол предыдущего data-кадра, а не empty.
+
     Args:
         hdf5_path: Путь к HDF5-файлу
         lock_timeout: Таймаут блокировки файла
@@ -513,73 +527,75 @@ def finalize_experiment_v2(hdf5_path: str, lock_timeout: int = 60) -> None:
 
             timeline = f['timeline']
             modes = timeline['modes'][:]
-            frame_numbers = timeline['frame_numbers'][:]
             angles = timeline['angles'][:]
 
-            # Создаём mapping группу
+            # Создаём mapping группу (идемпотентно)
             if 'mapping' not in f:
                 mapping = f.create_group('mapping')
             else:
                 mapping = f['mapping']
 
-            # Индексы по типам
+            # Индексы по типам. Ключ датасета — '<mode_name>_indices', а не
+            # '<mode_name>' — раньше проверка на существование сверяла не тот
+            # ключ, и повторный finalize падал на create_dataset с «name
+            # already exists».
             for mode_name, mode_code in FRAME_MODES.items():
                 indices = np.where(modes == mode_code)[0].astype('int32')
-                if mode_name in mapping:
-                    del mapping[mode_name]
-                mapping.create_dataset(f'{mode_name}_indices', data=indices)
+                ds_name = f'{mode_name}_indices'
+                if ds_name in mapping:
+                    del mapping[ds_name]
+                mapping.create_dataset(ds_name, data=indices)
 
             # checkpoint индексы для advanced
             is_advanced = bool(f['metadata/is_advanced'][()])
             if is_advanced:
-                periodic_empty_fnums = []
                 data_check_indices = []
                 checkpoint_data_indices = []
 
-                # Находим periodic empty серии и соответствующие data_check
                 empty_indices = mapping['empty_indices'][:]
                 data_indices = mapping['data_indices'][:]
                 dc_indices = mapping['data_check_indices'][:]
 
-                if len(empty_indices) > 0 and len(data_indices) > 0:
+                if len(empty_indices) > 0 and len(data_indices) > 0 and len(dc_indices) > 0:
                     # initial empty — это первые series_length empty
                     series_length = int(f['metadata/series_length'][()])
-                    periodic_empty_start = series_length
+                    periodic_empty_idxs = empty_indices[series_length:]
 
-                    # periodic empty начинаются после initial
-                    if periodic_empty_start < len(empty_indices):
-                        periodic_empty_idxs = empty_indices[periodic_empty_start:]
+                    if len(periodic_empty_idxs) > 0:
+                        # Группируем periodic empty-кадры в K вставок по
+                        # последовательным индексам timeline (каждая вставка —
+                        # непрерывный блок empty-кадров).
+                        splits = np.where(np.diff(periodic_empty_idxs) != 1)[0] + 1
+                        series_groups = np.split(periodic_empty_idxs, splits)
 
-                        # Для каждого periodic empty находим соответствующий data_check
-                        for i, pe_idx in enumerate(periodic_empty_idxs):
-                            pe_fn = frame_numbers[pe_idx]
+                        for group in series_groups:
+                            if len(group) == 0:
+                                continue
+                            series_end = group[-1]
 
-                            # data_check с frame_number > periodic empty
-                            dc_mask = frame_numbers[dc_indices] > pe_fn
-                            dc_candidates = dc_indices[dc_mask]
+                            # Первый (хронологически) data_check-кадр после этой empty-серии
+                            dc_after_mask = dc_indices > series_end
+                            dc_candidates = dc_indices[dc_after_mask]
+                            if len(dc_candidates) == 0:
+                                continue
+                            dc_idx = int(dc_candidates[0])
+                            dc_angle = angles[dc_idx]
 
-                            if len(dc_candidates) > 0:
-                                dc_idx = dc_candidates[0]
-                                data_check_indices.append(dc_idx)
+                            # Ближайший ПРЕДЫДУЩИЙ data-кадр с тем же углом, что у data_check
+                            data_before_mask = (data_indices < dc_idx) & (np.abs(angles[data_indices] - dc_angle) < 0.01)
+                            data_before = data_indices[data_before_mask]
+                            data_idx = int(data_before[-1]) if len(data_before) > 0 else -1
 
-                                # data кадр перед periodic empty (при том же угле)
-                                pe_angle = angles[pe_idx]
-                                data_before_mask = (data_indices < pe_idx) & (np.abs(angles[data_indices] - pe_angle) < 0.01)
-                                data_before = data_indices[data_before_mask]
+                            data_check_indices.append(dc_idx)
+                            checkpoint_data_indices.append(data_idx)
 
-                                if len(data_before) > 0:
-                                    checkpoint_data_indices.append(data_before[-1])
-                                else:
-                                    checkpoint_data_indices.append(-1)
-                            else:
-                                data_check_indices.append(-1)
-                                checkpoint_data_indices.append(-1)
-
-                if len(data_check_indices) > 0:
-                    mapping.create_dataset('checkpoint_data_indices',
-                                          data=np.array(checkpoint_data_indices, dtype='int32'))
-                    mapping.create_dataset('checkpoint_dc_indices',
-                                          data=np.array(data_check_indices, dtype='int32'))
+                for ds_name, data in (
+                    ('checkpoint_data_indices', checkpoint_data_indices),
+                    ('checkpoint_dc_indices', data_check_indices),
+                ):
+                    if ds_name in mapping:
+                        del mapping[ds_name]
+                    mapping.create_dataset(ds_name, data=np.array(data, dtype='int32'))
 
             logger.info(f'Finalized experiment HDF5 v2: {hdf5_path}')
 
