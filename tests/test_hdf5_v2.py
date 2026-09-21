@@ -382,3 +382,22 @@ def test_finalize_checkpoint_pair_with_count_per_step_2(tmp_path, monkeypatch):
     # первый dc checkpoint'а (index 10) ↔ последний data с тем же углом до него (index 7)
     assert checkpoint_dc == [10]
     assert checkpoint_data == [7]
+
+
+def test_duplicate_frame_retry_is_idempotent(tmp_path, monkeypatch):
+    """Повтор POST того же кадра (ответ потерялся после успешной записи) не пишет второй кадр."""
+    monkeypatch.chdir(tmp_path)
+    params = _simple_params(dark=1, empty=1, step_count=1)
+    hdf5_path = _run_experiment(params, ['dark', 'empty'])
+
+    frame = np.full((4, 5), 9, dtype='uint16')
+    idx, is_first = hdf5_v2.add_frame_v2(hdf5_path, frame, _frame_info(1, 'empty'))
+    assert (idx, is_first) == (1, False)
+
+    with h5py.File(hdf5_path, 'r') as f:
+        assert int(f.attrs['current_frame_index']) == 2
+        assert list(f['timeline/modes'][:]) == [0, 1]
+
+    # Следующий, ещё не записанный кадр принимается как обычно
+    idx, _ = hdf5_v2.add_frame_v2(hdf5_path, frame, _frame_info(2, 'data'))
+    assert idx == 2

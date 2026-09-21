@@ -302,6 +302,16 @@ def add_frame_v2(
             is_first_frame = (current_idx == 0)
             total_frames = int(f.attrs['total_frames'])
 
+            # Идемпотентность на уровне HDF5: drivers повторяют POST того же кадра,
+            # если ответ потерялся уже после успешной записи. Повтор последнего
+            # записанного frame_number не пишем второй раз.
+            if current_idx > 0 and frame_info.get('number') is not None:
+                last_number = int(f['timeline/frame_numbers'][current_idx - 1])
+                if int(frame_info['number']) == last_number:
+                    logger.warning(f'Frame {last_number} of {hdf5_path} already written at index '
+                                   f'{current_idx - 1}; duplicate retry ignored')
+                    return current_idx - 1, False
+
             if current_idx >= total_frames:
                 # Без этой проверки h5py упал бы на ds.resize() ниже с невнятным
                 # «dimension cannot exceed the existing maximal size».
