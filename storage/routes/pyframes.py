@@ -106,7 +106,7 @@ def make_png(frame, png_path):
     # Downsample 4x before filtering — reduces image from e.g. 4096x4096 to 1024x1024
     # This makes median_filter ~16x faster with negligible quality loss for preview
     small = frame[::4, ::4]
-    enhanced_image = scipy.ndimage.filters.median_filter(small, size=3)
+    enhanced_image = scipy.ndimage.median_filter(small, size=3)
     fig = plt.figure(figsize=(7, 4), dpi=72)
     ax = fig.add_subplot(111)
     im = ax.imshow(enhanced_image, cmap=plt.cm.gray)
@@ -115,12 +115,4 @@ def make_png(frame, png_path):
     fig.savefig(png_path, dpi=72)
     plt.close(fig)
     logger.info('png was made')
-
-# TODO: remove method as unused
-def delete_frame(frame_number, frame_type, frame_id,  experiment_id):
-    frames_file_path = os.path.join('data', 'experiments', str(experiment_id), 'before_processing', '{}.h5'.format(experiment_id))
-    with h5py.File(frames_file_path, 'r+') as frames_file:
-        del frames_file[frame_type][str(frame_number)]
-    logger.info(
-        'hdf5 file: frame {} was deleted from experiment {} successfully'.format(str(frame_id), str(experiment_id)))
 
