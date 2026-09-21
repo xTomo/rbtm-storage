@@ -25,6 +25,17 @@ python runserver.py
 docker compose up -d
 ```
 
+### Конфигурация без conf.py
+
+`storage/conf.py` в `.gitignore`, а генерация его в `Dockerfile` (`RUN echo
+"MONGODB_URI = ..." > conf.py`) закомментирована — в контейнере файла обычно
+нет. `app.config.from_envvar('YOURAPPLICATION_SETTINGS', silent=True)` не
+роняет импорт пакета при отсутствии файла; вместо этого используется
+дефолт `MONGODB_URI` — сначала переменная окружения `MONGODB_URI`, иначе
+`mongodb://database:27017` (имя сервиса `database` из `docker-compose.yml`).
+Если `conf.py` (или другой файл, указанный в `YOURAPPLICATION_SETTINGS`)
+всё же присутствует, его значения имеют приоритет.
+
 ## Структура хранилища
 
 Каждый эксперимент создаёт следующую файловую структуру:
