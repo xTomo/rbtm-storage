@@ -11,22 +11,23 @@ hdf5_v2.py — Модуль записи экспериментов в форм�
 │   ├── format_version       # str: "v2"
 │   └── created_at           # str: ISO datetime
 │
-├── metadata/                # Константы эксперимента
+├── metadata/                # Константы эксперимента (нетипизированные create_dataset —
+│   │                        # h5py выводит dtype из Python-типа: int -> int64, float -> float64)
 │   ├── experiment_id        # str
 │   ├── specimen             # str
 │   ├── tags                 # str
 │   ├── timestamp            # float64
 │   ├── datetime             # str
 │   ├── is_advanced          # bool
-│   ├── series_length        # int32 (если advanced)
-│   ├── empty_period         # int32 (если advanced)
-│   ├── data_total           # int32 (если advanced)
-│   ├── data_angle_step      # float32 (если advanced)
-│   ├── data_count_per_step  # int32 (если advanced)
+│   ├── series_length        # int64 (0 если не advanced)
+│   ├── empty_period         # int64 (0 если не advanced)
+│   ├── data_total           # int64 (0 если не advanced)
+│   ├── data_angle_step      # float64 (0.0 если не advanced)
+│   ├── data_count_per_step  # int64 (0 если не advanced)
 │   ├── detector_model       # str
-│   ├── pixel_size           # float32 (мм)
-│   ├── source_voltage       # float32 (кВ)
-│   └── source_current       # float32 (мкА)
+│   ├── pixel_size           # float64 (мм)
+│   ├── source_voltage       # float64 (кВ)
+│   └── source_current       # float64 (мкА)
 │
 ├── timeline/                # Типизированные массивы, shape (N_total,)
 │   ├── frame_numbers        # int64   — глобальные номера кадров
@@ -40,19 +41,22 @@ hdf5_v2.py — Модуль записи экспериментов в форм�
 │   ├── hous_temp            # float32 — температура корпуса детектора
 │   ├── horizontal_pos       # int32   — горизонтальная позиция
 │   ├── vertical_pos         # int32   — вертикальная позиция
-│   └── segment_ids          # int32   — номер сегмента (-1=dark, 0=initial, 1+=periodic)
+│   └── segment_ids          # int32   — номер сегмента (-1=dark, 0=initial, k≥1=periodic-вставка k)
 │
 ├── images/                  # Бинарные данные кадров
 │   └── all                  # uint16[N_total, H, W], chunked, gzip
 │
-└── mapping/                 # Индексы для быстрого доступа (заполняется после эксперимента)
+└── mapping/                 # Индексы для быстрого доступа (заполняется finalize_experiment_v2)
     ├── dark_indices         # int32[N_dark]   — индексы в timeline для dark
     ├── empty_indices        # int32[N_empty]  — индексы в timeline для empty
     ├── data_indices         # int32[N_data]   — индексы в timeline для data
     ├── data_check_indices   # int32[N_dc]     — индексы в timeline для data_check
-    ├── checkpoint_data_indices   # int32[K] — индексы data-кадров ДО checkpoint
-    └── checkpoint_dc_indices     # int32[K] — индексы data_check-кадров ПОСЛЕ checkpoint
+    ├── checkpoint_data_indices   # int32[K] — data-кадр каждой checkpoint-пары (K = число periodic-вставок)
+    └── checkpoint_dc_indices     # int32[K] — data_check-кадр той же checkpoint-пары
 ─────────────────────────────────────────────────────────────────────────────
+
+segment_ids и checkpoint-пары — см. _compute_segment_id() и
+finalize_experiment_v2() ниже для точной семантики.
 """
 import json
 import logging
