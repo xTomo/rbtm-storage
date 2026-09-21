@@ -1,6 +1,6 @@
 import json
 import os
-from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
 
 import h5py
 import matplotlib
@@ -15,6 +15,12 @@ from flask import current_app as app
 from ..hdf5_v2 import add_frame_v2
 
 logger = app.logger
+
+# Пул для генерации PNG-превью: раньше на каждый кадр запускался отдельный
+# Thread без ограничения — под нагрузкой (много кадров подряд) это плодило
+# неограниченное число потоков, конкурирующих за matplotlib/CPU. Два воркера
+# достаточно, т.к. превью не на критическом пути ответа /storage/frames/post.
+_PNG_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix='png-gen')
 
 
 def add_frame(frame, frame_info, frame_number, frame_type, frame_id, experiment_id):
@@ -44,10 +50,10 @@ def add_frame(frame, frame_info, frame_number, frame_type, frame_id, experiment_
     else:
         _add_frame_v1_wrapper(frame, frame_info, frame_number, frame_type, frame_id, experiment_id, lock_path)
 
-    # Генерация PNG превью (асинхронно)
+    # Генерация PNG превью (асинхронно, в ограниченном пуле)
     png_file_path = os.path.abspath(os.path.join('data', 'experiments', str(experiment_id), 'before_processing', 'png',
                                  str(frame_id) + '.png'))
-    Thread(target=make_png, args=(frame, png_file_path)).start()
+    _PNG_EXECUTOR.submit(_make_png_safe, frame, png_file_path, frame_id, experiment_id)
     logger.info('png: start making png from frame {} of experiment {}'.format(frame_id, experiment_id))
 
 
@@ -99,6 +105,18 @@ def _add_frame_v1_wrapper(frame, frame_info, frame_number, frame_type, frame_id,
             ds.attrs["pixel_size"] = pixel_size
 
     logger.info('hdf5 v1: add frame {} to experiment {} successfully'.format(frame_id, experiment_id))
+
+
+def _make_png_safe(frame, png_path, frame_id, experiment_id):
+    """Обёртка над make_png для запуска в ThreadPoolExecutor.
+
+    submit() без .result() молча проглатывает исключения — логируем их явно,
+    иначе ошибка генерации PNG никогда не попадёт в лог.
+    """
+    try:
+        make_png(frame, png_path)
+    except Exception as e:
+        logger.error(f'png: failed to make png for frame {frame_id} of experiment {experiment_id}: {e}')
 
 
 def make_png(frame, png_path):
