@@ -138,7 +138,6 @@ def finish_experiment():
 
 @bp_experiments.route('/<experiment_id>', methods=['DELETE'])
 def delete_experiment(experiment_id):
-    json_result = jsonify({'deleted': 'success'})
     logger.info('Deleting experiment: ' + experiment_id)
 
     db = get_db()
@@ -148,13 +147,16 @@ def delete_experiment(experiment_id):
     exp_query = {'_id': experiment_id}
     if experiments.count_documents(exp_query) == 0:
         logger.error('Experiment not found')
+        return jsonify({'deleted': 'not found'}), 404
+
+    json_result = jsonify({'deleted': 'success'})
+
+    experiments.delete_many(exp_query)
+    if experiments.count_documents(exp_query) != 0:
+        logger.error("Can't remove experiment")
+        json_result = jsonify({'deleted': 'fail'})
     else:
-        experiments.delete_many(exp_query)
-        if experiments.count_documents(exp_query) != 0:
-            logger.error("Can't remove experiment")
-            json_result = jsonify({'deleted': 'fail'})
-        else:
-            logger.info("database: deleted experiment {} successfully".format(experiment_id))
+        logger.info("database: deleted experiment {} successfully".format(experiment_id))
 
     frames_query = {'exp_id': experiment_id}
     frames.delete_many(frames_query)
@@ -164,6 +166,8 @@ def delete_experiment(experiment_id):
     else:
         logger.info("database: deleted frames of {} successfully".format(experiment_id))
 
-    fs.delete_experiment(experiment_id)
+    if not fs.delete_experiment(experiment_id):
+        logger.error("Can't remove experiment files from filesystem")
+        json_result = jsonify({'deleted': 'fail'})
 
     return json_result

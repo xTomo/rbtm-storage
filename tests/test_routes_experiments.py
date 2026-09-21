@@ -106,3 +106,25 @@ def test_finish_unknown_experiment_returns_404(client):
     resp = _finish(test_client, 'does-not-exist', message='Experiment was finished successfully')
     assert resp.status_code == 404
     assert 'error' in resp.get_json()
+
+
+def test_delete_unknown_experiment_returns_404_immediately(client):
+    test_client, db = client
+    resp = test_client.delete('/storage/experiments/does-not-exist')
+    assert resp.status_code == 404
+    assert resp.get_json() == {'deleted': 'not found'}
+
+
+def test_delete_existing_experiment_removes_mongo_and_files(client):
+    import os
+    test_client, db = client
+    exp_id = 'exp-delete-ok'
+    _create_experiment(test_client, exp_id, dark=1, empty=0, step_count=0)
+    exp_path = os.path.join('data', 'experiments', exp_id)
+    assert os.path.exists(exp_path)
+
+    resp = test_client.delete(f'/storage/experiments/{exp_id}')
+    assert resp.status_code == 200
+    assert resp.get_json() == {'deleted': 'success'}
+    assert db['experiments'].find_one({'_id': exp_id}) is None
+    assert not os.path.exists(exp_path)
