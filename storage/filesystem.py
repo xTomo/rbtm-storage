@@ -9,15 +9,19 @@ from .hdf5_v2 import create_experiment_hdf5_v2
 logger = app.logger
 
 
-def create_experiment(experiment_id, exp_info, use_v2=True):
+def create_experiment(experiment_id, exp_info, use_v2=True, detector_info=None):
     """
     Создаёт структуру эксперимента в файловой системе.
-    
+
     Args:
         experiment_id: UUID эксперимента
         exp_info: JSON-строка с метаданными эксперимента (MongoDB документ)
         use_v2: Если True — создаёт HDF5 v2 формат, иначе — legacy v1
-        
+        detector_info: dict с ключами 'model'/'pixel_size' — детектор эксперимента
+            (drivers добавляют его в top-level документ эксперимента как
+            detector_model/pixel_size); source_info на момент создания ещё
+            не известен и дозаполняется в add_frame_v2 из первого кадра.
+
     Returns:
         True если успешно, False если эксперимент уже существует
     """
@@ -43,7 +47,7 @@ def create_experiment(experiment_id, exp_info, use_v2=True):
         if use_v2:
             # Создаём HDF5 v2 формат
             params = json.loads(exp_info)
-            create_experiment_hdf5_v2(experiment_id, params)
+            create_experiment_hdf5_v2(experiment_id, params, detector_info=detector_info)
         else:
             # Legacy v1 формат
             frames_file_path = os.path.join(before_processing_path, '{}.h5'.format(experiment_id))

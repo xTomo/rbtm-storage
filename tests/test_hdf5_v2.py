@@ -158,6 +158,21 @@ def test_compute_total_frames_default_count_per_step():
     )
 
 
+def test_create_experiment_hdf5_v2_uses_detector_info(tmp_path, monkeypatch):
+    """detector_info из документа эксперимента (top-level detector_model/pixel_size у drivers)
+    должен попасть в metadata вместо дефолтных значений."""
+    monkeypatch.chdir(tmp_path)
+    params = _simple_params(dark=0, empty=0, step_count=1)
+    hdf5_path = hdf5_v2.create_experiment_hdf5_v2(
+        'exp-test', params, detector_info={'model': 'MH110XC-KK-FA', 'pixel_size': 0.00425}
+    )
+
+    with h5py.File(hdf5_path, 'r') as f:
+        metadata = f['metadata']
+        assert str(metadata['detector_model'][()], 'utf8') == 'MH110XC-KK-FA'
+        assert float(metadata['pixel_size'][()]) == 0.00425
+
+
 def test_none_metadata_values_do_not_crash_and_become_nan(tmp_path, monkeypatch):
     """None в числовых полях метаданных (drivers._safe_read) не должны ронять запись."""
     monkeypatch.chdir(tmp_path)

@@ -58,8 +58,14 @@ def create_experiment():
     insert_query.pop('exp_id', None)
     insert_query['_id'] = experiment_id
 
+    # drivers добавляют detector_model/pixel_size в top-level документ эксперимента
+    detector_info = {
+        'model': insert_query.get('detector_model', ''),
+        'pixel_size': insert_query.get('pixel_size', 4.25e-3),
+    }
+
     # Все новые эксперименты создаются в формате v2
-    if fs.create_experiment(experiment_id, dumps(insert_query), use_v2=True):
+    if fs.create_experiment(experiment_id, dumps(insert_query), use_v2=True, detector_info=detector_info):
         insert_query['finished'] = False
         experiments.insert(insert_query)
 
