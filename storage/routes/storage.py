@@ -34,14 +34,34 @@ def new_frame():
     image_array = np.load(frame.stream)['frame_data']
     logger.info('Image array has been loaded!')
 
-    db = get_db()
-    frame_id = db['frames'].insert(json_frame)
     frame_number = str(json_frame['frame']['number'])
     frame_type = str(json_frame['frame']['mode'])
-    frame_doc = db['frames'].find_one({"_id": ObjectId(frame_id)})
-    frame_info = dumps(frame_doc)
 
-    pyframes.add_frame(image_array, frame_info, frame_number, frame_type, frame_id, experiment_id)
+    db = get_db()
+    # drivers ретраят тот же кадр до 3 раз при 500 — переиспользуем уже
+    # выданный _id для того же (exp_id, frame.number), чтобы PNG-файл и
+    # frame_id были стабильны между попытками.
+    existing = db['frames'].find_one(
+        {'exp_id': experiment_id, 'frame.number': frame_number}, {'_id': 1}
+    )
+    frame_id = existing['_id'] if existing else ObjectId()
+    frame_info = dumps({**json_frame, '_id': frame_id})
+
+    # Пишем в HDF5 ДО вставки в Mongo: если запись упадёт, drivers получат 500
+    # и повторят попытку, а лишнего/несогласованного документа в Mongo не останется.
+    try:
+        pyframes.add_frame(image_array, frame_info, frame_number, frame_type, frame_id, experiment_id)
+    except Exception as e:
+        logger.error(f'Failed to add frame {frame_id} of experiment {experiment_id} to HDF5: {e}')
+        return jsonify({'error': str(e)}), 500
+
+    # Идемпотентно: повторная попытка того же кадра (exp_id, frame.number)
+    # обновляет существующий документ вместо создания дубля.
+    db['frames'].update_one(
+        {'exp_id': experiment_id, 'frame.number': frame_number},
+        {'$set': json_frame, '$setOnInsert': {'_id': frame_id}},
+        upsert=True,
+    )
 
     logger.info('experiment id: {} frame id: {}'.format(str(experiment_id), str(frame_id)))
 
