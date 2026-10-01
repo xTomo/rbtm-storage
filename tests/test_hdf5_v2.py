@@ -401,3 +401,45 @@ def test_duplicate_frame_retry_is_idempotent(tmp_path, monkeypatch):
     # Следующий, ещё не записанный кадр принимается как обычно
     idx, _ = hdf5_v2.add_frame_v2(hdf5_path, frame, _frame_info(2, 'data'))
     assert idx == 2
+
+
+def test_file_not_bloated_by_per_frame_rewrites(tmp_path, monkeypatch):
+    """Файл не раздувается: каждый кадр переписывает сжатый чанк (файл открывается на кадр), и если между записями
+    в конец файла попадает что-то ещё (раньше — attrs last_mode строкой переменной длины, она живёт в глобальной
+    куче), старые версии чанка остаются дырами — скан dc5548a3 от 01.10.2026: 40 ГБ при 7,3 ГБ кадров."""
+    monkeypatch.chdir(tmp_path)
+    modes = ['dark'] * 2 + ['empty'] * 2 + ['data'] * 10
+    for k in range(2):                                                # вставка после каждых 10 data, кроме последних
+        modes += ['empty'] * 2 + ['data_check'] + ['data'] * 10
+    params = _advanced_params(series_length=2, data_total=30, empty_period=10)
+    hdf5_path = hdf5_v2.create_experiment_hdf5_v2('exp-test', params)
+    rng = np.random.default_rng(0)
+    for i, mode in enumerate(modes):
+        frame = rng.poisson(3000, (96, 128)).astype('uint16')          # шум — сжимается слабо, как реальные кадры
+        hdf5_v2.add_frame_v2(hdf5_path, frame, _frame_info(i, mode))
+    with h5py.File(hdf5_path, 'r') as f:
+        images = f['images/all'].id.get_storage_size()
+        assert list(f['timeline/segment_ids'][:])[:6] == [-1, -1, 0, 0, 0, 0]
+    size = pathlib.Path(hdf5_path).stat().st_size
+    assert size <= 1.3 * images + (1 << 20), 'файл {} байт при {} байт кадров'.format(size, images)
+
+
+def test_segment_continues_in_file_started_by_previous_version(tmp_path, monkeypatch):
+    """Эксперимент, начатый версией со строковым attrs['last_mode'] (шёл во время выкатки), продолжается: режим
+    предыдущего кадра берётся из строки, новые кадры пишут целый код, строка больше не обновляется."""
+    monkeypatch.chdir(tmp_path)
+    params = _advanced_params(series_length=2, data_total=4, empty_period=2)
+    hdf5_path = hdf5_v2.create_experiment_hdf5_v2('exp-test', params)
+    frame = np.full((4, 5), 7, dtype='uint16')
+    modes = ['dark', 'dark', 'empty', 'empty', 'data', 'data']
+    for i, mode in enumerate(modes):
+        hdf5_v2.add_frame_v2(hdf5_path, frame, _frame_info(i, mode))
+    with h5py.File(hdf5_path, 'r+') as f:                         # как файл старой версии
+        del f.attrs[hdf5_v2.LAST_MODE_ATTR]
+        f.attrs['last_mode'] = 'data'
+    for i, mode in enumerate(['empty', 'empty', 'data_check', 'data', 'data'], start=len(modes)):
+        hdf5_v2.add_frame_v2(hdf5_path, frame, _frame_info(i, mode))
+    with h5py.File(hdf5_path, 'r') as f:
+        assert list(f['timeline/segment_ids'][:]) == [-1, -1, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+        assert int(f.attrs[hdf5_v2.LAST_MODE_ATTR]) == hdf5_v2.FRAME_MODES['data']
+        assert f.attrs['last_mode'] == 'data'

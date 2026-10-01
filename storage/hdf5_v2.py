@@ -78,6 +78,14 @@ FRAME_MODES = {
     'data_check': 3,
 }
 
+#: Режим предыдущего кадра для _compute_segment_id — целым кодом FRAME_MODES (−1 — кадров ещё не было).
+#: Только числом фиксированного размера: строка переменной длины (так было с attrs['last_mode'] после ревью
+#: 22.09.2026) хранится в глобальной куче в конце файла, и на каждом кадре туда дописывается новая. Тогда
+#: чанк кадров перестаёт быть последним в файле, а его перезапись на каждом кадре (файл открывается на кадр,
+#: чанк из 10 кадров пересжимается) оставляет старые версии дырами: скан dc5548a3 — 40 ГБ при 7,3 ГБ кадров.
+LAST_MODE_ATTR = 'last_mode_code'
+_MODE_BY_CODE = {code: name for name, code in FRAME_MODES.items()}
+
 MODE_NAMES = {v: k for k, v in FRAME_MODES.items()}
 
 
@@ -259,7 +267,7 @@ def create_experiment_hdf5_v2(
 
         # Состояние для O(1)-вычисления segment_id в _compute_segment_id
         f.attrs['current_segment'] = 0
-        f.attrs['last_mode'] = ''
+        f.attrs[LAST_MODE_ATTR] = np.int64(-1)
 
     # Создаём маркер v2 рядом с файлом — используется в pyframes.add_frame()
     # для определения версии без повторного открытия HDF5 (избегаем race condition)
@@ -443,7 +451,7 @@ def _compute_segment_id(f: h5py.File, mode_str: str) -> int:
     Новая вставка обнаруживается по переходу data → empty: первый empty-кадр,
     следующий сразу за data-кадром, начинает новый сегмент. Состояние
     (номер текущего сегмента и режим предыдущего кадра) хранится в attrs
-    файла (f.attrs['current_segment'], f.attrs['last_mode']), поэтому
+    файла (f.attrs['current_segment'], f.attrs[LAST_MODE_ATTR] — целым кодом, см. там же), поэтому
     вычисление не требует чтения timeline.
 
     Args:
@@ -456,15 +464,24 @@ def _compute_segment_id(f: h5py.File, mode_str: str) -> int:
     if mode_str == 'dark':
         segment_id = -1
     else:
-        last_mode = f.attrs.get('last_mode', '')
+        last_mode = _last_mode(f)
         current_segment = int(f.attrs.get('current_segment', 0))
         if mode_str == 'empty' and last_mode == 'data':
             current_segment += 1
             f.attrs['current_segment'] = current_segment
         segment_id = current_segment
 
-    f.attrs['last_mode'] = mode_str
+    f.attrs[LAST_MODE_ATTR] = np.int64(FRAME_MODES.get(mode_str, FRAME_MODES['data']))
     return segment_id
+
+
+def _last_mode(f: h5py.File) -> str:
+    """Режим предыдущего кадра: из целого attrs[LAST_MODE_ATTR], а у файлов, начатых до исправления (эксперимент
+    шёл во время выкатки), — из строкового attrs['last_mode']; '' — кадров ещё не было."""
+    if LAST_MODE_ATTR in f.attrs:
+        return _MODE_BY_CODE.get(int(f.attrs[LAST_MODE_ATTR]), '')
+    v = f.attrs.get('last_mode', '')
+    return v.decode('utf8') if isinstance(v, bytes) else str(v)
 
 
 def _fill_metadata_from_first_frame(
