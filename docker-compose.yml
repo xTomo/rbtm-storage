@@ -21,3 +21,11 @@ services:
     depends_on:
       - database
     restart: unless-stopped
+
+# Сеть проекта — с закреплённым именем: rbtm-web и rbtm-recon подключаются к ней как к внешней rbtmstorage_default.
+# Без имени compose называет её по каталогу (<проект>_default), а проект — по-разному в разных версиях
+# docker-compose (rbtmstorage или rbtm-storage); 07.10.2026 после пересоздания хранилище оказалось в
+# rbtm-storage_default, и сайт со студией перестали его видеть.
+networks:
+  default:
+    name: rbtmstorage_default
